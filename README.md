@@ -182,59 +182,6 @@ flowchart TD
 
 ---
 
-## 🚀 快速上手（本地优先 · 任意智能体可用）
-
-DevTest 的核心接口是一个 **agent 无关的本地 CLI**（`probe`/`plan`/`execute`/`verify`）。本地终端、Codex 等编码智能体、Trae MCP 都调用同一个 `core-kernel`，**Trae MCP 只是同源包装，可选**。
-
-### ① 本地终端 CLI（主入口）
-
-```bash
-npm install && npm run build
-
-# 1. 环境探活（--mock 为离线仿真，输出会标注 [MOCK]）
-npm run devtest -- probe --env test --mock
-
-# 2. 分流推导与测试规划（视频模型 84, 720p, 4s）
-npm run devtest -- plan --model 84 --media video --resolution 720p --duration 4
-
-# 3. 一键派发并自动闭环验真（--wait；涉及真实数据变更必须自动连库取证）
-npm run devtest -- execute --model 84 --media video --mode mock --wait
-
-# 4. 独立验证既有真实任务（自动建立 SSH 隧道进行 MySQL 物理对账）
-npm run devtest -- verify --task 239467 --model 84 --media video --expected-points 84
-```
-
-详见 ➔ [**命令行参考手册 (CLI Reference)**](docs/CLI_REFERENCE.md)。
-
-### ② 任意编码智能体 / Codex（agent 无关）
-
-任何能读 `AGENTS.md` 并执行 shell 的智能体都能直接驱动 DevTest —— 无需任何专属插件：
-
-- **执行**：直接跑上面的 `npm run devtest -- <动作>`；
-- **知识**：读版本库内的技能文档（源在 `src/devtest/assets/`，随构建打包进 `dist/`，见下方「内置技能库」）。
-
-> 让某个智能体用某能力，只需在其 `AGENTS.md` 写清「做 X 时读某技能 / 跑某命令」。文件与命令均在版本库内、可离线使用。
-
-### ③ Trae / Cursor MCP（可选 · 同源包装）
-
-DevTest 附带符合 MCP 标准的 stdio 接口，是对同一 `core-kernel` 的薄包装。仓库内 [`.trae/mcp.json`](.trae/mcp.json) 已登记好：
-
-```json
-{
-  "mcpServers": {
-    "devtest": {
-      "command": "node",
-      "args": ["${workspaceFolder}/dist/bin/devtest-mcp.js", "--project-root", "${workspaceFolder}"],
-      "env": { "NODE_OPTIONS": "", "NODE_USE_ENV_PROXY": "1", "PANQU_MCP_INTEGRATION_VERSION": "6.0.0" }
-    }
-  }
-}
-```
-
-详见 ➔ [**MCP 集成指南**](docs/MCP_GUIDE.md)。
-
----
-
 ## 🎛️ 四大核心动作闭环
 
 ```mermaid
@@ -308,13 +255,13 @@ flowchart TD
 
 ## 🧾 自测报告产物（双模同源）
 
-测试结论有两种同源产物，均收敛自唯一裁决引擎，遵循同一套「零假 PASS」纪律：
+测试结果可输出为聊天简报或文件报告，均须对应实际执行记录；涉及业务裁决时引用唯一裁决引擎的实际结果，未产生裁决时明确说明：
 
-- **聊天简报**（默认）：`状态 / 概况 / 证据 / 缺口 / 下一步` 五段式，规约见 [`devtest/SKILL.md`](src/devtest/assets/devtest/SKILL.md) 第十节。
-- **文件报告**（可交付）：按 [`report-template.md`](src/devtest/assets/devtest/report-template.md) 的骨架产出，裁决置顶为唯一真相源、证据可追溯。
+- **聊天简报**（默认）：按实际场景、原始结果、证据与缺口组织，规约见 [`devtest/SKILL.md`](src/devtest/assets/devtest/SKILL.md) 第十节。
+- **文件报告**（可交付）：按 [`report-template.md`](src/devtest/assets/devtest/report-template.md) 围绕实际使用场景组织覆盖、执行、专项核验和问题定位，重要异常展开预期差异、影响、证据与复现，未覆盖的风险单列。
 
 > [!NOTE]
-> **文件报告六条硬规则**：① 顶部裁决表是唯一现行结论，禁止层层叠加"以本节为准"覆盖段；② 执行状态只用 canonical 集合 `PASS / FAIL / PROCESSING / IN_FLIGHT / UNVERIFIED / BLOCKED / ERROR`；③ 证据强度（`CONFIRMED / SOURCE / DERIVED / DESIGN`）另立一轴，不与状态混用；④ 任何 PASS 必带真实证据链接，设计用例永不计入验收；⑤ 证据一律相对路径，不泄露绝对路径与凭证明文；⑥ 按事实伸缩，已确认缺陷与阻断条件分开写。
+> **文件报告填写原则**：按场景主动检查差异、告警、证据冲突与关联回归；问题说明触发条件、影响与复现，根因假设和已确认原因分开；原始结果和证据可追溯，必需证据缺失及未覆盖风险不能省略；统计与费用按实际对象计算，不预填业务值或案例。详细规则以模板为准。
 
 ---
 
@@ -364,4 +311,4 @@ npm run lint                  # ESLint + Prettier
 - 🤖 [**MCP 集成指南**](docs/MCP_GUIDE.md) — Trae / Cursor 配置与闭环交互
 - 🔍 [**验真与金融对账白皮书**](docs/VERIFICATION_SPEC.md) — MP4 Box 解构、尾部切片、三大金融不变量
 - 🔀 [**NewAPI 分流真实代码流程**](src/devtest/assets/panqu-newapi-diversion/references/diversion-flow.md) — 主站分流端到端取证映射
-- 🧾 [**文件报告基础模板**](src/devtest/assets/devtest/report-template.md) — 可交付自测报告的骨架与六条硬规则
+- 🧾 [**文件报告默认模板**](src/devtest/assets/devtest/report-template.md) — 按实际执行组织结论、证据与缺口
