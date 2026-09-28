@@ -2,10 +2,10 @@
 
 # 🛡️ Ai-DevTest
 
-**面向 AI 图片 / 视频生成链路的自动化测试工具**
+**面向 AI 图片与视频生成链路的自动化测试工具**
 
 [![Version](https://img.shields.io/badge/version-6.0.0-blue.svg)](package.json)
-[![Tests](https://img.shields.io/badge/tests-52%20suites%20%7C%20914%20passed%20(100%25)-brightgreen.svg)](tests/unit/devtest)
+[![Tests](https://img.shields.io/badge/tests-54%20suites%20%7C%20921%20passed%20(100%25)-brightgreen.svg)](tests/unit/devtest)
 [![Coverage](https://img.shields.io/badge/coverage-87.51%25%20(Lines)%20%7C%2086.51%25%20(Stmts)-brightgreen.svg)](vitest.config.ts)
 [![Security Gates](https://img.shields.io/badge/security-5%20automated%20gates-success.svg)](.github/workflows/ci.yml)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-orange.svg)](package.json)
@@ -17,156 +17,153 @@
 
 ---
 
-## 📖 项目定位
+## 📖 项目简介
 
-Ai-DevTest 是一个专为 AI 图片与视频生成链路打造的自动化测试工具。它只负责**测试任务执行、文件结构校验、数据库查验与扣费流水对账**，不承载模型训练与推理。
+Ai-DevTest 是一个专为 AI 图片与视频生成链路打造的自动化测试工具。它主要负责**测试任务提交、生成文件校验、数据库记录核对与积分流水对账**，不包含模型训练与推理。
 
-> **核心原则：测任务是否提交成功 ➔ 查数据库是否真实落库 ➔ 验视频/图片文件是否正常 ➔ 对账积分扣费是否正确**
+> **核心流程：提交测试任务 ➔ 查数据库落库 ➔ 校验生成文件 ➔ 核对积分流水**
 
 > [!IMPORTANT]
-> **全系统唯一裁决权威**：全链路业务裁决统一收敛至 `CanonicalVerdictEngine` 纯三态（`PASS` \| `FAIL` \| `UNVERIFIED`）。任何领域模块、执行适配器、CLI 或 MCP 均无权自制业务通过裁决。
+> **统一判定结果**：测试结果统一为 `PASS`（通过）、`FAIL`（失败）或 `UNVERIFIED`（未验证/证据不足），不依赖接口 HTTP 200 单独判断。
 
 ---
 
-## 🏛️ 全景系统架构拓扑 (System Architecture Topology)
+## 🏛️ 系统架构
 
-系统遵循严格的**单向无环数据流（Unidirectional DAG，运行时环路严格为 0）**，确立了 **“规约驱动（Spec-Driven）➔ 事实收集（Evidence Collection）➔ 唯一裁决（Canonical Verdict）➔ 投影呈现（Projection）”** 的核心管线：
+整体执行流程为：**测试配置（Spec） ➔ 收集证据（Evidence） ➔ 判定结果（Verdict） ➔ 输出报告（Projection）**：
 
 ![全景系统架构拓扑](docs/assets/architecture-topology.png)
 
-
 ---
 
-## 🏗️ 四级架构分层规范 (4-Tier Component Boundaries)
+## 🏗️ 代码分层说明
 
-系统代码资产严格受控于 [ARCHITECTURE_FREEZE.md](docs/ARCHITECTURE_FREEZE.md)，划分为四大层级，严禁越权渗透：
+代码结构分为 4 个层次，层级之间单向依赖：
 
-| 层级 (Tier) | 代表性组件 | 职责与生命周期 | 依赖与隔离规则 |
+| 层级 | 主要模块 | 说明 | 依赖规则 |
 |---|---|---|---|
-| **Tier 1: 生产调用链核心** | `canonical-protocol.ts`<br>`core-kernel.ts`<br>`canonical-verdict-engine.ts`<br>`database-evidence-producer.ts` | 承载生产环境运行的最小闭环核心；控制规约强校验、任务派发与最终裁决。 | 零外部重量级框架依赖，模块间依赖为严格无环有向图（DAG），不可引入测试桩。 |
-| **Tier 2: 可选注入适配器** | `result-sink.ts`<br>`ui-adapters.ts`<br>`agent-evaluation.ts`<br>`exploration/` | 扩展性端口与纯库函数；支持单向导出、UI 契约接缝、提示词评测与自演化状态图。 | 严格遵循“四可隔离原则”（可开关、可替换、可单测、可删除），默认不污染生产调用。 |
-| **Tier 3: 测试专用资产** | `TestOfflineExecutionAdapter`<br>`UIFixtureExecutionAdapter`<br>`tests/fixtures/` | 提供离线仿真、单元回归与断言契约校验。 | 严格限制在 `tests/` 目录，绝对禁止导出到 `src/`，严禁生产运行时装载。 |
-| **Tier 4: 思想吸纳隔离层** | Playwright / Midscene / Promptfoo / ReportPortal / wardenIQ | 吸收业界先进理念（视觉辅助仅为 AI 观察、深冻结单向导出、Git 变更分析）。 | 坚持**纯轻量契约吸纳**，未安装外部大包（如无 playwright / @midscene 运行时），防架构虚浮膨胀。 |
+| **Tier 1: 核心链路** | `canonical-protocol.ts`<br>`core-kernel.ts`<br>`canonical-verdict-engine.ts`<br>`database-evidence-producer.ts` | 负责核心测试流程、任务派发与最终结果判定。 | 基础核心代码，无外部重型依赖，不允许循环引用。 |
+| **Tier 2: 功能扩展** | `result-sink.ts`<br>`ui-adapters.ts`<br>`agent-evaluation.ts`<br>`exploration/` | 测试结果导出、UI 辅助检查、评测扩展。 | 可插拔，不影响主干执行。 |
+| **Tier 3: 本地测试** | `TestOfflineExecutionAdapter`<br>`UIFixtureExecutionAdapter`<br>`tests/fixtures/` | 离线模拟、测试数据与单元测试。 | 仅限 `tests/` 目录，不打包到生产代码。 |
+| **Tier 4: 规范参考** | 外部工具与规范适配 | 规范适配与轻量类型定义。 | 仅保留轻量接口定义，不引入重型第三方依赖。 |
 
 ---
 
-## 🔄 核心数据流与裁决状态机 (Data Flow & Verdict State Machine)
+## 🔄 测试执行与状态判定
 
-每次验证严格按照以下状态机执行，实现物理级防作弊与 Fail-Closed 判定：
+测试执行过程与判定流转如下，必须拿到足够的证据才会判定通过：
 
-![核心数据流与裁决状态机](docs/assets/verdict-state-machine.png)
-
-
----
-
-## 🎛️ 四大核心动作闭环
-
-![四大核心动作闭环](docs/assets/core-actions.png)
-
-
-- **`probe()`**：环境连通、脱敏凭证有效性感知与模型白名单探测。无裁决权。（`--mock` 为离线仿真，人读报告标注 `[MOCK]`）
-- **`plan()`**：Direct 直连 vs NewAPI 分流决策、目标对象消歧、刊例积分预算（标为 `DEVTEST_EXPECTATION`）。无裁决权。
-- **`execute()`**：受控离线仿真（`mock`）与真实提交（`real`）。真实提交默认 `READ_ONLY` 预检阻断，需显式 `--allow-submit` / `--allow-paid` 授权。
-- **`verify()`**：采集 5 维客观事实（Task 终态、产物归属、容器物理结构、账单流水、金融不变量），提交唯一裁决引擎终审。使用 `--wait` 可从 `execute` 自动桥接至 `verify` 一键闭环。
+![测试执行与状态判定](docs/assets/verdict-state-machine.png)
 
 ---
 
-## ⚖️ 零假 PASS 裁决门禁（确定性 Fail-Closed）
+## 🎛️ 核心测试命令
 
-![零假 PASS 裁决门禁](docs/assets/zero-false-pass.png)
+![核心测试命令](docs/assets/core-actions.png)
 
+- **`probe`**：检查测试环境连通性，验证 API 凭证与支持的模型列表。（使用 `--mock` 为离线模拟，测试报告会标注 `[MOCK]`）
+- **`plan`**：根据模型和渠道确定直连或 NewAPI 分流，预估消耗积分并生成测试计划。
+- **`execute`**：执行任务。支持离线模拟（`--mock`）和真实提交（真实提交需显式添加 `--allow-submit` 参数，避免误调用扣费）。
+- **`verify`**：校验任务结果。检查任务状态、生成文件（格式与大小）、数据库记录和积分扣费流水。使用 `--wait` 可在 `execute` 执行后自动等待结果并校验。
+
+---
+
+## ⚖️ 结果判定规则
+
+![结果判定规则](docs/assets/zero-false-pass.png)
 
 > [!CAUTION]
-> **最小证据契约红线**：TestSpec 必须至少声明 `requiredEvidence` 或 `deterministicAssertions` 之一；两者皆空时裁决引擎直接返回 `UNVERIFIED`（blocker `NO_EVALUABLE_EVIDENCE_SPEC`），**严禁"空规格 PASS"**。证据 provenance 严禁从预期值反推（`PROVENANCE_DERIVED_FROM_EXPECTATION` 门禁）。真实模式下，调用者外部断言（如 `--gateway-channel-confirmed`）严禁被升级为网关事实。
+> **判定底线**：测试必须至少包含具体的检查项（如数据库记录、文件校验或明确断言）。如果没有任何检查项，或者缺少必要证据，统一判定为 `UNVERIFIED`，杜绝没有实际校验就判通过的情况。
+> - 检查结果必须来自实际接口返回或数据库查询，严禁拿“预期值”充当实际结果。
+> - 在真实模式下，外部传入的参数不能直接当成已验证的事实。
 
 ---
 
-## 🗄️ 真实数据库物理取证（原生接入 TS 流水线）
+## 🗄️ 真实数据库校验
 
-涉及真实任务派发与账目变动的场景，`verify` 在**真实模式**下会自动经 `DatabaseEvidenceProducer` 与 `db-preflight.ts` 通过 SSH 隧道（跳板机 `115.191.19.88:22`）对测试库执行**只读**物理落库取证，并将证据信封折算进唯一裁决：
+在真实测试模式下，`verify` 命令会自动通过 SSH 隧道连接测试数据库进行只读检查，并将查询结果作为测试判定的依据：
 
-- **严格只读原则**：仅执行 `SELECT` 查询，严禁执行 `INSERT` / `UPDATE` / `DELETE`；
-- **凭据卫生管理**：凭据由本地 `db-credentials.json` 自动解析加载，严禁打印、记录或提交明文口令；
-- **媒体源表自动消歧**：视频查询 `pq_aivideo_new`；图片按模式分别查询 `pq_aivideo_goods` / `_character` / `_scene` / `_fusion`；另核验后台调度表 `pq_volcengine_ai_task`；
-- **账务严格闭环**：成功任务核对前台预扣流水 `pq_score_log` 与净扣对账；失败任务核对退款冲正流水，确保净扣积分严格归零；
-- **严禁越权绕过**：真实数据变更场景强制执行数据库取证，不能被 CLI `--no-db-verify` 绕过；离线 fixture 测试方可显式跳过真实 MySQL。
+- **只读查询**：仅执行 `SELECT` 查询，严禁执行 `INSERT`、`UPDATE`、`DELETE` 等任何修改操作；
+- **配置加载**：自动读取本地 `db-credentials.json`，日志中严禁打印或输出明文密码；
+- **业务表核对**：视频任务查询 `pq_aivideo_new`，图片任务按类型查询对应图片表，并核对后台调度表 `pq_volcengine_ai_task`；
+- **流水对账**：任务成功核对前台预扣流水 `pq_score_log`，任务失败核对退款冲正流水，确保净扣积分准确；
+- **不可跳过**：真实数据变更场景必须执行数据库检查，不能通过 `--no-db-verify` 绕过（仅离线测试可跳过数据库）。
 
 > [!NOTE]
-> **真实端到端闭环验证实证**：真实视频任务（Seedance 2.0 任务 `239545`）与真实图片任务（`1037`）已通过 `execute`（真实付费提交）➔ 轮询终态 ➔ 产物二进制解码 ➔ DB 只读取证 ➔ 账单流水对账，全流程跑通真实闭环。
+> **真实用例跑通记录**：真实视频任务（Seedance 2.0 任务 `239545`）与真实图片任务（`1037`）已全流程通过真实提交、状态轮询、文件下载校验、数据库查询及积分对账。
 
 ---
 
-## 🧩 内置技能库（Skills · agent 无关）
+## 🧩 内置技能库
 
-技能是给智能体的**领域决策指南 + 代码取证映射**，源在 `src/devtest/assets/<name>/`，构建时同步到 `dist/` 与 `.trae/skills/`，本地 CLI、Codex、Trae 共用：
+包含提供给 AI 助手使用的业务规则与参考手册，位于 `src/devtest/assets/`：
 
 | 技能 | 覆盖场景 |
 |---|---|
-| `panqu-newapi-diversion` | NewAPI 两级分流决策、渠道权重与降级回退（含 [`diversion-flow.md`](src/devtest/assets/panqu-newapi-diversion/references/diversion-flow.md) 真实代码端到端流程，带 `文件:行号` 取证） |
-| `panqu-video-models` / `panqu-image-models` | 视频 / 图片模型接入、能力参数、任务与结果 |
-| `panqu-billing` | 计费扣费、积分预估、账单大盘与对账 |
-| `panqu-newapi-model-onboarding` | NewAPI 新模型接入 SOP 与排障 |
-| `panqu-canvas` | 画布、工作流节点、协作与执行 |
-| `devtest` | DevTest 主技能：需求澄清、计划一次确认、证据门禁、报告产出（见下方「自测报告产物」与 [`report-template.md`](src/devtest/assets/devtest/report-template.md)） |
+| `panqu-newapi-diversion` | NewAPI 分流决策、渠道权重与降级回退说明 |
+| `panqu-video-models` / `panqu-image-models` | 视频与图片模型接入参数、支持能力与返回格式 |
+| `panqu-billing` | 计费规则、积分预估、账单明细与对账逻辑 |
+| `panqu-newapi-model-onboarding` | NewAPI 新模型接入流程与排障方法 |
+| `panqu-canvas` | 画布与工作流节点配置 |
+| `devtest` | 核心测试流程说明、命令参数指南与报告模板 |
 
 ---
 
-## 🧾 自测报告产物（双模同源）
+## 🧾 测试报告输出
 
-测试结果可输出为聊天简报或文件报告，均须对应实际执行记录；涉及业务裁决时引用唯一裁决引擎的实际结果，未产生裁决时明确说明：
+测试结果支持输出为两种格式：
 
-- **聊天简报**（默认）：按实际场景、原始结果、证据与缺口组织，规约见 [`devtest/SKILL.md`](src/devtest/assets/devtest/SKILL.md) 第十节。
-- **文件报告**（可交付）：按 [`report-template.md`](src/devtest/assets/devtest/report-template.md) 围绕实际使用场景组织覆盖、执行、专项核验和问题定位，重要异常展开预期差异、影响、证据与复现，未覆盖的风险单列。
-
-> [!NOTE]
-> **文件报告填写原则**：按场景主动检查差异、告警、证据冲突与关联回归；问题说明触发条件、影响与复现，根因假设和已确认原因分开；原始结果和证据可追溯，必需证据缺失及未覆盖风险不能省略；统计与费用按实际对象计算，不预填业务值或案例。详细规则以模板为准。
+- **终端简报**（默认）：快速查看测试场景、执行结果、关键证据与遗留问题。
+- **Markdown 报告**：生成详细测试文档（模板见 [`report-template.md`](src/devtest/assets/devtest/report-template.md)），包含场景覆盖、详细执行记录、异常分析与风险清单。
 
 ---
 
-## 🛡️ 五重自动化安全门禁 (GitHub Actions)
+## 🛡️ CI 自动化检查 (GitHub Actions)
 
-| 安全层级 / Job | 扫描工具 | 目标 |
+流水线包含 5 项自动化安全与质量检查：
+
+| 检查项 | 工具 | 说明 |
 |---|---|---|
-| **1. 生产依赖审计** (`security-audit`) | `npm audit --audit-level=high` | 阻断 High / Critical CVE 生产依赖 |
-| **2. SAST 静态分析** (`security-sast`) | **Semgrep** (OWASP Top 10 & CWE) | 阻断注入、反序列化、不安全路径与敏感 API 误用 |
-| **3. 秘钥与凭证防泄漏** (`security-secrets`) | **Gitleaks** (全历史) | 阻断 JWT / API Key / SSH 私钥 / 明文密码入库 |
-| **4. 配置与容器安全** (`security-trivy`) | **Trivy** | 阻断畸变容器配置与云原生隐患 |
-| **5. 开源协议合规** (`security-license`) | 自研合规审计器 | 阻断未授权传染性协议 (GPL/AGPL) 污染 |
+| **1. 依赖漏洞审计** (`security-audit`) | `npm audit --audit-level=high` | 拦截含高危及以上 CVE 的生产依赖 |
+| **2. 代码安全扫描** (`security-sast`) | **Semgrep** (OWASP Top 10 & CWE) | 检查注入、敏感路径等代码安全问题 |
+| **3. 敏感信息防泄露** (`security-secrets`) | **Gitleaks** | 检查是否有私钥、API Key 或密码提交 |
+| **4. 配置安全扫描** (`security-trivy`) | **Trivy** | 扫描配置文件与潜在安全隐患 |
+| **5. 开源协议检查** (`security-license`) | 协议合规检查器 | 检查依赖是否符合开源协议要求 |
 
 ---
 
-## 🧪 质量门禁与测试矩阵
+## 🧪 测试与质量验证
 
 ```bash
-npm test                      # 全量 51 套件 / 906 单元测试 (100% 通过)
-npx vitest run --coverage     # 覆盖率门禁 (Statements 86.51%, Lines 87.51%, Functions 91.55%, Branches 79.14%)
-npm run build                 # TypeScript 编译 + 内置技能同步 (dist/ 与 .trae/skills/)
-npm run lint                  # ESLint + Prettier
+npm test                      # 全量 54 个套件 / 921 个单元测试 (100% 通过)
+npx vitest run --coverage     # 覆盖率检查 (Statements 86.51%, Lines 87.51%, Functions 91.55%, Branches 79.14%)
+npm run build                 # TypeScript 编译 + 技能同步
+npm run lint                  # ESLint + Prettier 格式检查
 ```
 
-当前状态：**51 套件 / 906 用例 100% 通过，零跳过零失败**；`dependency-cycle.test.ts` 保证运行时依赖回环严格为 0。
+当前状态：**54 套件 / 921 用例 100% 通过，零跳过零失败**；包含无循环依赖检查（Cycle Count = 0）。
 
 <details>
-<summary><b>📊 测试矩阵（按验证域）</b></summary>
+<summary><b>📊 测试覆盖范围</b></summary>
 
-| 验证域 | 代表套件 | 核心验证范围 |
+| 模块 | 代表套件 | 验证范围 |
 |---|---|---|
-| **核心调度 / CLI** | `core-kernel-and-cli`、`core-kernel-canonical-switch` | 四大动作、CLI 退出码、E2E 闭环状态机、10 大安全反证 |
-| **唯一裁决** | `canonical-verdict-engine`、`canonical-protocol`、`canonical-shadow-comparison`、`legacy-protocol-mappers` | 纯三态断言、最小证据契约底线、证据信封校验、单向投影 |
-| **分流路由** | `routing`、`routing-disambiguation`、`dynamic-plan`、`diversion-*` | Direct/NewAPI 决策、渠道消歧防伪、动态规划与刊例计算、line=10 规则 |
-| **执行 / 媒体 / 账务** | `execution-ports`、`media-flow`、`media-inspector`、`billing`、`database-evidence-producer` | 受控执行端口、轮询退避、MP4/PNG 物理解析、三大金融不变量、SSH 隧道 DB 只读取证 |
-| **需求 / 知识 / 能力** | `requirement-trace`、`domain-knowledge`、`knowledge-*`、`self-evolving-tester`、`capability-maturity-and-reality`、`agent-evaluation` | 需求追溯、知识召回/晋升/解耦、能力成熟度、智能体可信度评测 |
-| **架构 / 契约 / 隔离 / 安全** | `architecture-convergence`、`dependency-cycle`、`public-api-contract`、`test-isolation`、`result-sink`、`security-ci`、探索变异 6 套件 | 拓扑收敛、零环依赖 (Cycle Count=0)、API 契约、故障恢复、CI 安全门禁契约 |
+| **核心调度 / CLI** | `core-kernel-and-cli`、`core-kernel-canonical-switch` | 四大动作、命令行参数、退出码与执行流程 |
+| **结果判定** | `canonical-verdict-engine`、`canonical-protocol`、`canonical-shadow-comparison`、`legacy-protocol-mappers` | 三态判定、证据完整性校验与结果格式转换 |
+| **路由与分流** | `routing`、`routing-disambiguation`、`dynamic-plan`、`diversion-*` | Direct / NewAPI 分流决策、渠道匹配与积分计算 |
+| **执行与校验** | `execution-ports`、`media-flow`、`media-inspector`、`billing`、`database-evidence-producer` | 任务接口调用、状态轮询、MP4/图片解析、积分流水与 SSH 数据库只读校验 |
+| **需求与知识** | `requirement-trace`、`domain-knowledge`、`knowledge-*`、`self-evolving-tester`、`capability-maturity-and-reality`、`agent-evaluation` | 需求追踪、业务知识召回、测试生成与模型评测 |
+| **架构与安全** | `architecture-convergence`、`dependency-cycle`、`public-api-contract`、`test-isolation`、`result-sink`、`security-ci` 等 | 架构规范、零循环依赖、公共 API 契约与 CI 安全检查 |
 
 </details>
 
 ---
 
-## 📚 深度文档中心
+## 📚 相关文档
 
-- 📐 [**架构永久冻结规范**](docs/ARCHITECTURE_FREEZE.md) — 核心拓扑、受控扩展红线与不可变原则
-- 💻 [**命令行参考手册**](docs/CLI_REFERENCE.md) — 四大动作完整参数、示例与 JSON 管道
-- 🤖 [**MCP 集成指南**](docs/MCP_GUIDE.md) — Trae / Cursor 配置与闭环交互
-- 🔍 [**验真与金融对账白皮书**](docs/VERIFICATION_SPEC.md) — MP4 Box 解构、尾部切片、三大金融不变量
-- 🔀 [**NewAPI 分流真实代码流程**](src/devtest/assets/panqu-newapi-diversion/references/diversion-flow.md) — 主站分流端到端取证映射
-- 🧾 [**文件报告默认模板**](src/devtest/assets/devtest/report-template.md) — 按实际执行组织结论、证据与缺口
+- 📐 [**系统架构说明**](docs/ARCHITECTURE_FREEZE.md) — 核心架构设计与依赖规范
+- 💻 [**命令行使用手册**](docs/CLI_REFERENCE.md) — 核心命令参数说明与使用示例
+- 🤖 [**MCP 集成指南**](docs/MCP_GUIDE.md) — Cursor / Trae 等工具的 MCP 配置方法
+- 🔍 [**校验与对账规范**](docs/VERIFICATION_SPEC.md) — 媒体文件解析规则与数据库流水对账说明
+- 🔀 [**NewAPI 分流说明**](src/devtest/assets/panqu-newapi-diversion/references/diversion-flow.md) — 分流业务逻辑与代码实现对照
+- 🧾 [**测试报告模板**](src/devtest/assets/devtest/report-template.md) — 测试报告默认模板
