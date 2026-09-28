@@ -6,7 +6,7 @@
 
 [![Version](https://img.shields.io/badge/version-6.0.0-blue.svg)](package.json)
 [![Tests](https://img.shields.io/badge/tests-51%20suites%20%7C%20906%20passed%20(100%25)-brightgreen.svg)](tests/unit/devtest)
-[![Coverage](https://img.shields.io/badge/coverage-86.51%25%20(Statements)-brightgreen.svg)](vitest.config.ts)
+[![Coverage](https://img.shields.io/badge/coverage-87.51%25%20(Lines)%20%7C%2086.51%25%20(Stmts)-brightgreen.svg)](vitest.config.ts)
 [![Security Gates](https://img.shields.io/badge/security-5%20automated%20gates-success.svg)](.github/workflows/ci.yml)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-orange.svg)](package.json)
 [![TypeScript](https://img.shields.io/badge/typescript-%3E%3D5.9-blue.svg)](package.json)
@@ -21,10 +21,124 @@
 
 Panqu AI DevTest 是轻量、纯净、无副作用的测试工程副驾。它负责**测试意图编排、多维物理证据链验真与全链路验收闭环**，**不承载模型训练与推理服务本身**。
 
-> **业务原则：代码/需求变更 ➔ 意图编排 ➔ 物理证据与真实对账 ➔ 确定性门禁裁决（零副作用 · 零假 PASS）**
+> **核心业务原则：代码/需求变更 ➔ 意图编排 ➔ 物理证据与真实对账 ➔ 确定性门禁裁决（零副作用 · 零假 PASS）**
 
 > [!IMPORTANT]
 > **全系统唯一裁决权威**：全链路业务裁决统一收敛至 `CanonicalVerdictEngine` 纯三态（`PASS` \| `FAIL` \| `UNVERIFIED`）。任何领域模块、执行适配器、CLI 或 MCP 均无权自制业务通过裁决。
+
+---
+
+## 🏛️ 全景系统架构拓扑 (System Architecture Topology)
+
+系统遵循严格的**单向无环数据流（Unidirectional DAG，运行时环路严格为 0）**，确立了 **“规约驱动（Spec-Driven）➔ 事实收集（Evidence Collection）➔ 唯一裁决（Canonical Verdict）➔ 投影呈现（Projection）”** 的核心管线：
+
+```mermaid
+flowchart TD
+    subgraph S1["1. 需求追溯与规约生成 (Requirement & Spec)"]
+        REQ["业务变更 / Git Diff / 需求文本"] --> TRACE["RequirementTrace<br/>(Git 变更关联 + 纯函数影响分析)"]
+        TRACE --> SPEC["CanonicalTestSpec<br/>(不可变规约 / 声明式断言 / 预算与副作用门禁)"]
+    end
+
+    subgraph S2["2. 核心调度中枢 (Core Kernel)"]
+        SPEC --> KERNEL["core-kernel.ts<br/>(executeCanonical / probe / plan / verify)"]
+        KERNEL -->|"探活画像"| PROBE["probe()"]
+        KERNEL -->|"路由计划推导"| PLAN["plan()"]
+        KERNEL -->|"任务派发"| EXEC["execute()"]
+        KERNEL -->|"证据求值"| VERIFY["verify()"]
+    end
+
+    subgraph S3["3. 执行与取证适配器 (Adapters & Producers) — 零业务裁决权"]
+        EXEC -->|"网络提交/状态轮询"| ADAPTER["PanquMediaExecutionAdapter<br/>(FastAdmin API / 凭据校验)"]
+        VERIFY -->|"汇聚客观观察事实"| PRODUCERS["Evidence Collectors & Producers"]
+        
+        PRODUCERS --> P_DB["DatabaseEvidenceProducer<br/>(SSH 跳板机隧道 ➔ MySQL 只读物理取证)"]
+        PRODUCERS --> P_MEDIA["MediaInspector<br/>(MP4 moov/mdat 流式解析 / Range 探测)"]
+        PRODUCERS --> P_BILL["BillingLedgerReconciler<br/>(三大计费不变量 / 刊例与退款流水)"]
+        PRODUCERS --> P_DIV["DiversionEligibilityProducer<br/>(line=10 路由规则 / 飞书分流权威表)"]
+        PRODUCERS --> P_UI["UI Evidence Seam<br/>(轻量契约接缝 / 视觉 AI 仅作辅助)"]
+    end
+
+    subgraph S4["4. 证据信封汇聚层 (Evidence Envelope Hub)"]
+        P_DB & P_MEDIA & P_BILL & P_DIV & P_UI --> ENV["CanonicalEvidenceEnvelope[]<br/>(防篡改哈希 / 源类型隔离 / 不可变证据)"]
+    end
+
+    subgraph S5["5. 唯一最终业务裁决源 (Canonical Verdict Engine)"]
+        SPEC --> ENGINE
+        ENV --> ENGINE["CanonicalVerdictEngine<br/>(纯函数: PASS | FAIL | UNVERIFIED)"]
+        subgraph ENGINE_RULES["门禁核心机制"]
+            G1["1.1 最小证据底线门禁 (空规约必阻断)"]
+            G2["关键确定性断言求值 (Critical Assertions)"]
+            G3["必需证据完整性求值 (Required Evidence)"]
+            G4["REAL 模式来源隔离 (外部声明不等于事实)"]
+        end
+    end
+
+    subgraph S6["6. 呈现与单向导出层 (Presentation & Sink)"]
+        ENGINE -->|"单向只读投影"| PROJ["projectCanonicalVerdictToLegacy()"]
+        PROJ --> CLI["devtest CLI (终端人读高亮 + JSON)"]
+        PROJ --> MCP["TRAE / MCP Service (stdio 协议)"]
+        ENGINE -->|"单向只写不读"| SINK["ResultSink (NDJSON 递归深冻结结果归档)"]
+    end
+
+    style ENGINE fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px
+    style SINK fill:#dcfce7,stroke:#15803d
+    style P_DB fill:#fce7f3,stroke:#be185d
+```
+
+---
+
+## 🏗️ 四级架构分层规范 (4-Tier Component Boundaries)
+
+系统代码资产严格受控于 [ARCHITECTURE_FREEZE.md](docs/ARCHITECTURE_FREEZE.md)，划分为四大层级，严禁越权渗透：
+
+| 层级 (Tier) | 代表性组件 | 职责与生命周期 | 依赖与隔离规则 |
+|---|---|---|---|
+| **Tier 1: 生产调用链核心** | `canonical-protocol.ts`<br>`core-kernel.ts`<br>`canonical-verdict-engine.ts`<br>`database-evidence-producer.ts` | 承载生产环境运行的最小闭环核心；控制规约强校验、任务派发与最终裁决。 | 零外部重量级框架依赖，模块间依赖为严格无环有向图（DAG），不可引入测试桩。 |
+| **Tier 2: 可选注入适配器** | `result-sink.ts`<br>`ui-adapters.ts`<br>`agent-evaluation.ts`<br>`exploration/` | 扩展性端口与纯库函数；支持单向导出、UI 契约接缝、提示词评测与自演化状态图。 | 严格遵循“四可隔离原则”（可开关、可替换、可单测、可删除），默认不污染生产调用。 |
+| **Tier 3: 测试专用资产** | `TestOfflineExecutionAdapter`<br>`UIFixtureExecutionAdapter`<br>`tests/fixtures/` | 提供离线仿真、单元回归与断言契约校验。 | 严格限制在 `tests/` 目录，绝对禁止导出到 `src/`，严禁生产运行时装载。 |
+| **Tier 4: 思想吸纳隔离层** | Playwright / Midscene / Promptfoo / ReportPortal / wardenIQ | 吸收业界先进理念（视觉辅助仅为 AI 观察、深冻结单向导出、Git 变更分析）。 | 坚持**纯轻量契约吸纳**，未安装外部大包（如无 playwright / @midscene 运行时），防架构虚浮膨胀。 |
+
+---
+
+## 🔄 核心数据流与裁决状态机 (Data Flow & Verdict State Machine)
+
+每次验证严格按照以下状态机执行，实现物理级防作弊与 Fail-Closed 判定：
+
+```mermaid
+stateDiagram-v2
+    [*] --> SpecValidation: 接收输入规约 (CanonicalTestSpec)
+    
+    SpecValidation --> UNVERIFIED: 规约非法 / 缺少必需证据声明与断言 [空规格底线门禁]
+    SpecValidation --> Collecting: 格式合法，开始汇聚证据信封 (Envelopes)
+    
+    state Collecting {
+        [*] --> SSH_MySQL: 自动加载凭据并建立 SSH 跳板机隧道
+        SSH_MySQL --> QueryDB: SELECT 只读查询前后台任务表与积分流水表
+        QueryDB --> BuildEnvelopes: 封装 SERVER_API:DB_TASK_RECORD 与 DB_SCORE_LOGS
+        BuildEnvelopes --> BinaryInspect: 流式 Range 探测成片二进制 (moov/mdat)
+        BinaryInspect --> [*]
+    }
+
+    Collecting --> EvidenceFilter: 过滤非法/跨租户/环境不匹配信封
+    
+    state Evaluating {
+        EvidenceFilter --> CriticalAssertionCheck: 评估关键断言 (断言失败一票否决)
+        CriticalAssertionCheck --> FAIL: 物理任务不存在 / 状态错误 / 积分不对账 [FAIL]
+        
+        CriticalAssertionCheck --> RequiredEvidenceCheck: 断言全部通过，检查必需证据完整度
+        RequiredEvidenceCheck --> BlockerDetected: 凭据缺失 / SSH 中断 / 外部断言冒充网关
+        BlockerDetected --> UNVERIFIED: 阻断，记录结构化 Blocker
+        
+        RequiredEvidenceCheck --> PASS: 所有必需证据齐备且全部观察状态为 PASS
+    }
+
+    FAIL --> Presentation: 生成 REJECTED 呈现
+    UNVERIFIED --> Presentation: 生成 BLOCKED / UNVERIFIED 呈现 (零假 PASS)
+    PASS --> Presentation: 生成 ACCEPTED 呈现
+    
+    Presentation --> ResultSink: 结果单向深冻结导出 (只写不读)
+    ResultSink --> [*]
+```
 
 ---
 
@@ -37,14 +151,17 @@ DevTest 的核心接口是一个 **agent 无关的本地 CLI**（`probe`/`plan`/
 ```bash
 npm install && npm run build
 
-# 环境探活（--mock 为离线仿真，输出会标注 [MOCK]）
+# 1. 环境探活（--mock 为离线仿真，输出会标注 [MOCK]）
 npm run devtest -- probe --env test --mock
 
-# 分流推导与测试规划（视频模型 84, 720p, 4s）
+# 2. 分流推导与测试规划（视频模型 84, 720p, 4s）
 npm run devtest -- plan --model 84 --media video --resolution 720p --duration 4
 
-# 一键派发并自动闭环验真（--wait；--no-db-verify 可跳过数据库取证）
+# 3. 一键派发并自动闭环验真（--wait；涉及真实数据变更必须自动连库取证）
 npm run devtest -- execute --model 84 --media video --mode mock --wait
+
+# 4. 独立验证既有真实任务（自动建立 SSH 隧道进行 MySQL 物理对账）
+npm run devtest -- verify --task 239467 --model 84 --media video --expected-points 84
 ```
 
 详见 ➔ [**命令行参考手册 (CLI Reference)**](docs/CLI_REFERENCE.md)。
@@ -60,7 +177,7 @@ npm run devtest -- execute --model 84 --media video --mode mock --wait
 
 ### ③ Trae / Cursor MCP（可选 · 同源包装）
 
-DevTest 附带符合 MCP 标准的 stdio 接口，是对同一 `core-kernel` 的薄包装。仓库内 [`.trae/mcp.json`](.trae/mcp.json) 已登记好，配置与此一致：
+DevTest 附带符合 MCP 标准的 stdio 接口，是对同一 `core-kernel` 的薄包装。仓库内 [`.trae/mcp.json`](.trae/mcp.json) 已登记好：
 
 ```json
 {
@@ -74,12 +191,11 @@ DevTest 附带符合 MCP 标准的 stdio 接口，是对同一 `core-kernel` 的
 }
 ```
 
-> 仓库内 `.trae/mcp.json` 另注册了别名 `panqu-test-mcp`，指向同一 stdio 入口（`dist/bin/devtest-mcp.js`）；两者等价，按需保留其一即可。
-
 详见 ➔ [**MCP 集成指南**](docs/MCP_GUIDE.md)。
 
 ---
-## 🔄 四大核心动作闭环
+
+## 🎛️ 四大核心动作闭环
 
 ```mermaid
 flowchart LR
@@ -87,10 +203,10 @@ flowchart LR
     B --> C["③ execute()<br>任务派发与状态跟踪"]
     C --> D["④ verify()<br>5D 事实汇聚与唯一裁决"]
 
-    style A fill:#e1f5fe,stroke:#0288d1
-    style B fill:#fff3e0,stroke:#f57c00
-    style C fill:#f3e5f5,stroke:#7b1fa2
-    style D fill:#e8f5e9,stroke:#388e3c
+    style A fill:#e0f2fe,stroke:#0369a1
+    style B fill:#fef3c7,stroke:#b45309
+    style C fill:#f3e8ff,stroke:#6b21a8
+    style D fill:#dcfce7,stroke:#15803d
 ```
 
 - **`probe()`**：环境连通、脱敏凭证有效性感知与模型白名单探测。无裁决权。（`--mock` 为离线仿真，人读报告标注 `[MOCK]`）
@@ -100,7 +216,7 @@ flowchart LR
 
 ---
 
-## ⚖️ 零假 PASS 裁决（确定性 Fail-Closed）
+## ⚖️ 零假 PASS 裁决门禁（确定性 Fail-Closed）
 
 ```mermaid
 flowchart TD
@@ -110,28 +226,28 @@ flowchart TD
     BLOCK -- 是 --> UNVER["⚠️ UNVERIFIED (+ Blocker)<br>兼容投影为 acceptance: BLOCKED"]
     BLOCK -- 否 --> PASS["✅ PASS (全部必需证据与断言闭环)"]
 
-    style FAIL fill:#ffebee,stroke:#c62828,color:#c62828
-    style UNVER fill:#fff8e1,stroke:#f57f17,color:#f57f17
-    style PASS fill:#e8f5e9,stroke:#2e7d32,color:#2e7d32
+    style FAIL fill:#fee2e2,stroke:#b91c1c,color:#b91c1c
+    style UNVER fill:#fef3c7,stroke:#b45309,color:#b45309
+    style PASS fill:#dcfce7,stroke:#15803d,color:#15803d
 ```
 
 > [!CAUTION]
-> **最小证据契约红线**：TestSpec 必须至少声明 `requiredEvidence` 或 `deterministicAssertions` 之一；两者皆空时裁决引擎直接返回 `UNVERIFIED`（blocker `NO_EVALUABLE_EVIDENCE_SPEC`），严禁"空规格 PASS"。证据 provenance 严禁从预期值反推（`PROVENANCE_DERIVED_FROM_EXPECTATION` 门禁）。
+> **最小证据契约红线**：TestSpec 必须至少声明 `requiredEvidence` 或 `deterministicAssertions` 之一；两者皆空时裁决引擎直接返回 `UNVERIFIED`（blocker `NO_EVALUABLE_EVIDENCE_SPEC`），**严禁"空规格 PASS"**。证据 provenance 严禁从预期值反推（`PROVENANCE_DERIVED_FROM_EXPECTATION` 门禁）。真实模式下，调用者外部断言（如 `--gateway-channel-confirmed`）严禁被升级为网关事实。
 
 ---
-## 🗄️ 真实数据库物理取证（已接入 verify）
 
-涉及真实任务派发与账目变动的场景，`verify` 在**真实模式**下会自动经 `DatabaseEvidenceProducer` 通过 SSH 隧道对测试库做**只读**物理落库取证（**按媒体类型选源表**：视频 `pq_aivideo_new`，图片按模式 `pq_aivideo_goods`/`_character`/`_scene`/`_fusion`；另含后台 `pq_volcengine_ai_task` 与积分流水 `pq_score_log`），并将证据折算进唯一裁决：
+## 🗄️ 真实数据库物理取证（原生接入 TS 流水线）
 
-- **严格只读**（仅 `SELECT`），凭据读取自 gitignore 的 `db-credentials.json`，绝不硬编码；
-- **失败关闭**：库不可达 / 记录缺失 / 流水不一致 → `UNVERIFIED` / `BLOCKED`，绝不凭 HTTP 200 假 PASS；
-- **快速失败**：SSH 8s、DB 取证独立 10s 超时（不随 `--poll-timeout` 放大），避免卡死；
-- **边界**：单元测试（VITEST）不触发真实连库；真实运行可用 `--no-db-verify` 显式跳过；亦提供独立手动脚本 `python3 scripts/test-db-connection.py`。
+涉及真实任务派发与账目变动的场景，`verify` 在**真实模式**下会自动经 `DatabaseEvidenceProducer` 与 `db-preflight.ts` 通过 SSH 隧道（跳板机 `115.191.19.88:22`）对测试库执行**只读**物理落库取证，并将证据信封折算进唯一裁决：
+
+- **严格只读原则**：仅执行 `SELECT` 查询，严禁执行 `INSERT` / `UPDATE` / `DELETE`；
+- **凭据卫生管理**：凭据由本地 `db-credentials.json` 自动解析加载，严禁打印、记录或提交明文口令；
+- **媒体源表自动消歧**：视频查询 `pq_aivideo_new`；图片按模式分别查询 `pq_aivideo_goods` / `_character` / `_scene` / `_fusion`；另核验后台调度表 `pq_volcengine_ai_task`；
+- **账务严格闭环**：成功任务核对前台预扣流水 `pq_score_log` 与净扣对账；失败任务核对退款冲正流水，确保净扣积分严格归零；
+- **严禁越权绕过**：真实数据变更场景强制执行数据库取证，不能被 CLI `--no-db-verify` 绕过；离线 fixture 测试方可显式跳过真实 MySQL。
 
 > [!NOTE]
-> **真实闭环已端到端验证**：一条真实图片生成任务经 `execute`（真实付费提交）→ 轮询终态 → 产物解码 → DB 只读取证 → 账单流水对账，产出全绿裁决；同一真实任务在**错误刊例价**下裁决引擎正确判 `FAIL`（多扣费资损告警），在正确价下判 `PASS` —— 零假 PASS 与零假 FAIL 双向坐实。
-
-> 渠道权重挑选与 NewAPI→火山自动兜底运行在网关侧 Go 消费者（不在本仓库）；DevTest 覆盖主站侧「决策 / 落库 / 回读」全链路（网关渠道可凭 `pq_newapi_task_log` 只读快照盖章）。
+> **真实端到端闭环验证实证**：真实视频任务（Seedance 2.0 任务 `239545`）与真实图片任务（`1037`）已通过 `execute`（真实付费提交）➔ 轮询终态 ➔ 产物二进制解码 ➔ DB 只读取证 ➔ 账单流水对账，全流程跑通真实闭环。
 
 ---
 
@@ -149,6 +265,7 @@ flowchart TD
 | `devtest` | DevTest 主技能：需求澄清、计划一次确认、证据门禁、报告产出（见下方「自测报告产物」与 [`report-template.md`](src/devtest/assets/devtest/report-template.md)） |
 
 ---
+
 ## 🧾 自测报告产物（双模同源）
 
 测试结论有两种同源产物，均收敛自唯一裁决引擎，遵循同一套「零假 PASS」纪律：
@@ -159,23 +276,8 @@ flowchart TD
 > [!NOTE]
 > **文件报告六条硬规则**：① 顶部裁决表是唯一现行结论，禁止层层叠加"以本节为准"覆盖段；② 执行状态只用 canonical 集合 `PASS / FAIL / PROCESSING / IN_FLIGHT / UNVERIFIED / BLOCKED / ERROR`；③ 证据强度（`CONFIRMED / SOURCE / DERIVED / DESIGN`）另立一轴，不与状态混用；④ 任何 PASS 必带真实证据链接，设计用例永不计入验收；⑤ 证据一律相对路径，不泄露绝对路径与凭证明文；⑥ 按事实伸缩，已确认缺陷与阻断条件分开写。
 
-骨架：裁决 + 提测检查单 → 概览数字 → 范围 / 环境 → 证据总览 → 真实执行记录 → 缺陷与风险 → 计费对账 → 分流与网关 → 未覆盖 / 追溯 → 结论，附设计用例、版本快照、证据索引、数据清理与复现命令等附录。
-
 ---
 
-## 🏛️ 架构拓扑（收敛式单裁决引擎）
-
-| 环节 / 模块 | 核心职责 | 源码 |
-|---|---|---|
-| **需求追溯与影响分析** | 关联需求稳定 ID、推导影响用例与覆盖缺口 | [`requirement-trace.ts`](src/devtest/requirement-trace.ts) |
-| **规范测试规约** | 声明式确定性断言、`costLimit`、`sideEffectPolicy` 强类型 | [`canonical-protocol.ts`](src/devtest/canonical-protocol.ts) |
-| **核心内核调度** | 单向驱动 `probe`/`plan`/`execute`/`verify` | [`core-kernel.ts`](src/devtest/core-kernel.ts) |
-| **执行适配与 UI 证据** | 工具无关的 DOM/网络/截图/视觉**事实契约**；Producer 已随附且严格 fail-closed，但**不内置 Playwright/Midscene 运行时**，需调用方经 `BrowserFactCollector`/`VisualAiFactCollector` 接缝注入外部采集器回传原始事实（无运行时即 fail-closed；视觉结果恒为 `AI_OBSERVATION`，绝不单独产 PASS） | [`ui-adapters.ts`](src/devtest/ui-adapters.ts) |
-| **数据库物理取证** | 真实模式下只读 SSH 落库取证，失败关闭 | [`database-evidence-producer.ts`](src/devtest/database-evidence-producer.ts) |
-| **唯一裁决引擎** | 纯三态裁决，门禁阻断表示为 `UNVERIFIED + blocker`，零假 PASS | [`canonical-verdict-engine.ts`](src/devtest/canonical-verdict-engine.ts) |
-| **多端交付与持久化** | 双模同源呈现；深冻结结果单向导出 | [`result-sink.ts`](src/devtest/result-sink.ts) |
-
----
 ## 🛡️ 五重自动化安全门禁 (GitHub Actions)
 
 | 安全层级 / Job | 扫描工具 | 目标 |
@@ -191,13 +293,13 @@ flowchart TD
 ## 🧪 质量门禁与测试矩阵
 
 ```bash
-npm test                      # 全量 51 套件 / 906 单元测试
-npx vitest run --coverage     # 覆盖率门禁 (Statements/Lines/Functions ≥ 80%, Branches ≥ 70%)
+npm test                      # 全量 51 套件 / 906 单元测试 (100% 通过)
+npx vitest run --coverage     # 覆盖率门禁 (Statements 86.51%, Lines 87.51%, Functions 91.55%, Branches 79.14%)
 npm run build                 # TypeScript 编译 + 内置技能同步 (dist/ 与 .trae/skills/)
 npm run lint                  # ESLint + Prettier
 ```
 
-当前状态：**51 套件 / 906 用例 100% 通过，零跳过零失败**；覆盖率 语句 86.51% / 行 87.51% / 分支 79.14% / 函数 91.55%（过门禁）。
+当前状态：**51 套件 / 906 用例 100% 通过，零跳过零失败**；`dependency-cycle.test.ts` 保证运行时依赖回环严格为 0。
 
 <details>
 <summary><b>📊 测试矩阵（按验证域）</b></summary>
@@ -206,14 +308,15 @@ npm run lint                  # ESLint + Prettier
 |---|---|---|
 | **核心调度 / CLI** | `core-kernel-and-cli`、`core-kernel-canonical-switch` | 四大动作、CLI 退出码、E2E 闭环状态机、10 大安全反证 |
 | **唯一裁决** | `canonical-verdict-engine`、`canonical-protocol`、`canonical-shadow-comparison`、`legacy-protocol-mappers` | 纯三态断言、最小证据契约底线、证据信封校验、单向投影 |
-| **分流路由** | `routing`、`routing-disambiguation`、`dynamic-plan` | Direct/NewAPI 决策、渠道消歧防伪、动态规划与刊例计算 |
-| **执行 / 媒体 / 账务** | `execution-ports`、`media-flow`、`media-inspector`、`billing`、`database-evidence-producer` | 受控执行端口、轮询退避、MP4/PNG 物理解析、三大金融不变量、DB 只读取证 |
+| **分流路由** | `routing`、`routing-disambiguation`、`dynamic-plan`、`diversion-*` | Direct/NewAPI 决策、渠道消歧防伪、动态规划与刊例计算、line=10 规则 |
+| **执行 / 媒体 / 账务** | `execution-ports`、`media-flow`、`media-inspector`、`billing`、`database-evidence-producer` | 受控执行端口、轮询退避、MP4/PNG 物理解析、三大金融不变量、SSH 隧道 DB 只读取证 |
 | **需求 / 知识 / 能力** | `requirement-trace`、`domain-knowledge`、`knowledge-*`、`self-evolving-tester`、`capability-maturity-and-reality`、`agent-evaluation` | 需求追溯、知识召回/晋升/解耦、能力成熟度、智能体可信度评测 |
-| **架构 / 契约 / 隔离 / 安全** | `architecture-convergence`、`dependency-cycle`、`public-api-contract`、`test-isolation`、`result-sink`、`security-ci`、探索变异 6 套件 | 拓扑收敛、无环依赖、API 契约、故障恢复、CI 安全门禁契约 |
+| **架构 / 契约 / 隔离 / 安全** | `architecture-convergence`、`dependency-cycle`、`public-api-contract`、`test-isolation`、`result-sink`、`security-ci`、探索变异 6 套件 | 拓扑收敛、零环依赖 (Cycle Count=0)、API 契约、故障恢复、CI 安全门禁契约 |
 
 </details>
 
 ---
+
 ## 📚 深度文档中心
 
 - 📐 [**架构永久冻结规范**](docs/ARCHITECTURE_FREEZE.md) — 核心拓扑、受控扩展红线与不可变原则
@@ -222,9 +325,3 @@ npm run lint                  # ESLint + Prettier
 - 🔍 [**验真与金融对账白皮书**](docs/VERIFICATION_SPEC.md) — MP4 Box 解构、尾部切片、三大金融不变量
 - 🔀 [**NewAPI 分流真实代码流程**](src/devtest/assets/panqu-newapi-diversion/references/diversion-flow.md) — 主站分流端到端取证映射
 - 🧾 [**文件报告基础模板**](src/devtest/assets/devtest/report-template.md) — 可交付自测报告的骨架与六条硬规则
-
-
-
-
-
-
