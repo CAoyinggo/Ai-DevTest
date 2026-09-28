@@ -5,8 +5,8 @@
 **面向 Panqu AI 图片 / 视频生成链路的测试工程副驾 —— 意图编排、物理证据验真、零假 PASS 确定性验收门禁**
 
 [![Version](https://img.shields.io/badge/version-6.0.0-blue.svg)](package.json)
-[![Tests](https://img.shields.io/badge/tests-48%20suites%20%7C%20811%20passed%20(100%25)-brightgreen.svg)](tests/unit/devtest)
-[![Coverage](https://img.shields.io/badge/coverage-86.08%25%20(Statements)-brightgreen.svg)](vitest.config.ts)
+[![Tests](https://img.shields.io/badge/tests-51%20suites%20%7C%20906%20passed%20(100%25)-brightgreen.svg)](tests/unit/devtest)
+[![Coverage](https://img.shields.io/badge/coverage-86.51%25%20(Statements)-brightgreen.svg)](vitest.config.ts)
 [![Security Gates](https://img.shields.io/badge/security-5%20automated%20gates-success.svg)](.github/workflows/ci.yml)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-orange.svg)](package.json)
 [![TypeScript](https://img.shields.io/badge/typescript-%3E%3D5.9-blue.svg)](package.json)
@@ -191,13 +191,13 @@ flowchart TD
 ## 🧪 质量门禁与测试矩阵
 
 ```bash
-npm test                      # 全量 48 套件 / 811 单元测试
+npm test                      # 全量 51 套件 / 906 单元测试
 npx vitest run --coverage     # 覆盖率门禁 (Statements/Lines/Functions ≥ 80%, Branches ≥ 70%)
 npm run build                 # TypeScript 编译 + 内置技能同步 (dist/ 与 .trae/skills/)
 npm run lint                  # ESLint + Prettier
 ```
 
-当前状态：**48 套件 / 811 用例 100% 通过，零跳过零失败**；覆盖率 语句 86.08% / 行 87.17% / 分支 78.58% / 函数 91.31%（过门禁）。
+当前状态：**51 套件 / 906 用例 100% 通过，零跳过零失败**；覆盖率 语句 86.51% / 行 87.51% / 分支 79.14% / 函数 91.55%（过门禁）。
 
 <details>
 <summary><b>📊 测试矩阵（按验证域）</b></summary>
