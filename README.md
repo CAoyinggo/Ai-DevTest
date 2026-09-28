@@ -2,7 +2,7 @@
 
 # 🛡️ Ai-DevTest
 
-**面向 AI 图片 / 视频生成链路的测试工程副驾 —— 意图编排、物理证据验真、零假 PASS 确定性验收门禁**
+**面向 AI 图片 / 视频生成链路的自动化测试工具**
 
 [![Version](https://img.shields.io/badge/version-6.0.0-blue.svg)](package.json)
 [![Tests](https://img.shields.io/badge/tests-52%20suites%20%7C%20914%20passed%20(100%25)-brightgreen.svg)](tests/unit/devtest)
@@ -17,11 +17,11 @@
 
 ---
 
-## 📖 定位：只测不跑 · 零假 PASS
+## 📖 项目定位
 
-Ai-DevTest 是轻量、纯净、无副作用的测试工程副驾。它负责**测试意图编排、多维物理证据链验真与全链路验收闭环**，**不承载模型训练与推理服务本身**。
+Ai-DevTest 是一个专为 AI 图片与视频生成链路打造的自动化测试工具。它只负责**测试任务执行、文件结构校验、数据库查验与扣费流水对账**，不承载模型训练与推理。
 
-> **核心业务原则：代码/需求变更 ➔ 意图编排 ➔ 物理证据与真实对账 ➔ 确定性门禁裁决（零副作用 · 零假 PASS）**
+> **核心原则：测任务是否提交成功 ➔ 查数据库是否真实落库 ➔ 验视频/图片文件是否正常 ➔ 对账积分扣费是否正确**
 
 > [!IMPORTANT]
 > **全系统唯一裁决权威**：全链路业务裁决统一收敛至 `CanonicalVerdictEngine` 纯三态（`PASS` \| `FAIL` \| `UNVERIFIED`）。任何领域模块、执行适配器、CLI 或 MCP 均无权自制业务通过裁决。
