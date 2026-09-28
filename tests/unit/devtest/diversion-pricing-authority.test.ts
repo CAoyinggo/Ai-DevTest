@@ -104,6 +104,18 @@ describe('diversion-pricing-authority (飞书分流渠道表权威)', () => {
     expect(all[0].channel).toContain('星辰');
     expect(all[0].cost).toBeCloseTo(0.58, 3);
   });
+  it('对抗回归锁：空/脏分辨率不得用「resolution:null」的国际行成本顶替他档价 → resolveChannelCost 返回 null', () => {
+    // matchRow 以 normalizeResolution 比较；normalizeResolution('' | undefined | '乱码' | '   ') 皆为 ''，
+    // 会命中国际线路表里 resolution:null 的行（normalizeResolution(null)===''），而这些行携带 costPriceComputed，
+    // 于是空/脏分辨率会「顶替」返回某档国际成本（错价）。修复：函数入口 normalizeResolution(q.resolution)===''→null。
+    const c = loadDiversionPricing();
+    // 合法 480p 仍可解析（不误伤既有能力，与上面 0.672 断言一致）
+    expect(resolveChannelCost(c, { model: 'Seedance2.5', resolution: '480p', channel: '火山' })).toBeCloseTo(0.672, 4);
+    // 空 / 乱码无数字 / 纯空格分辨率，跨 international/all 作用域：一律 null，绝不顶替
+    expect(resolveChannelCost(c, { model: 'Seedance2.5', resolution: '', channel: '火山', scope: 'international' })).toBeNull();
+    expect(resolveChannelCost(c, { model: 'Seedance2.5', resolution: '乱码无数字', channel: '火山', scope: 'all' })).toBeNull();
+    expect(resolveChannelCost(c, { model: 'Seedance2.5', resolution: '   ', channel: '火山', scope: 'international' })).toBeNull();
+  });
 });
 
 describe('作用域边界：图片刊例价不在本(视频)分流表', () => {

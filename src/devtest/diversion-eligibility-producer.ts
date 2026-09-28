@@ -26,6 +26,18 @@ export interface DiversionEligibilityInput {
   image?: ImageDiversionInput;
 }
 
+/**
+ * 分流标记数值化（fail-closed）：只接受可确定的有限数。
+ * null/undefined/空串/非数字(NaN)/±Infinity → undefined（不可判），绝不让脏标记冒充「0=未分流」。
+ * 关键：`Number('')===0`、`Number('foo')===NaN` 都可能骗过 `!== undefined` 守卫而伪造「已观测·未分流」，
+ * 进而与「预测未分流」布尔巧合放行 PASS —— 这里统一收口。
+ */
+function numMarker(v: unknown): number | undefined {
+  if (v === undefined || v === null || v === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 /** 从数据库落库记录中提取「实际是否分流」。 */
 function extractObserved(db: DatabaseRawCollection | undefined): {
   hasObserved: boolean;
@@ -53,9 +65,9 @@ function extractObserved(db: DatabaseRawCollection | undefined): {
     extra = rawExtra as Record<string, unknown>;
   }
   const task = rec.pq_volcengine_ai_task as Record<string, unknown> | undefined;
-  const line = task?.line !== undefined ? Number(task.line) : undefined;
-  const diversionTag = extra?.diversion !== undefined ? Number(extra.diversion) : undefined;
-  const newapiImage = extra?.newapi_image !== undefined ? Number(extra.newapi_image) : undefined;
+  const line = numMarker(task?.line);
+  const diversionTag = numMarker(extra?.diversion);
+  const newapiImage = numMarker(extra?.newapi_image);
   if (line === undefined && diversionTag === undefined && newapiImage === undefined) {
     return { hasObserved: false };
   }
@@ -119,6 +131,11 @@ export class DiversionEligibilityProducer implements EvidenceProducer {
       // 无可评估的分流预测：mediaType 与所供 video/image 子输入不匹配（或两者均缺）。
       // 绝不能因 NO_INPUT 兜底的 diverted:false 恰好撞上「未分流」落库而伪造 PASS —— fail-closed。
       observationStatus = 'UNVERIFIED';
+    } else if (predicted.hardError) {
+      // 预测为 CONFIG_ERROR/提交中断(hardError=PHP 侧抛异常，非静默回退)：分流「决策」本身不可信，
+      // predicted.diverted 的 false 只表示「不会走分流线」而非「已干净判定为不分流」。绝不能拿它与
+      // 落库 observedDiverted 的布尔巧合放行 PASS —— fail-closed 收敛为 UNVERIFIED（决策不可确证）。
+      observationStatus = 'UNVERIFIED';
     } else if (!observed.hasObserved) {
       observationStatus = 'UNVERIFIED'; // 只有预测、无落库对照
     } else {
@@ -151,7 +168,8 @@ export class DiversionEligibilityProducer implements EvidenceProducer {
           matched,
         },
         provenance: 'DIVERSION_ELIGIBILITY:newapi_route_rules_gate(model×resolution×aspect×enabled)',
-        confidence: predicted.decision === 'NO_INPUT' ? 0.0 : observed.hasObserved ? 1.0 : 0.0,
+        confidence:
+          predicted.decision === 'NO_INPUT' || predicted.hardError ? 0.0 : observed.hasObserved ? 1.0 : 0.0,
         immutable: true,
         redacted: false,
         collectionStatus: observed.hasObserved ? 'SUCCESS' : 'MISSING',

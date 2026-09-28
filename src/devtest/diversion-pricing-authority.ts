@@ -183,6 +183,10 @@ export function resolveChannelCost(
   cache: DiversionPricingCache,
   q: { model: string; resolution: string; channel: string; refVideo?: boolean; scope?: PricingScope },
 ): number | null {
+  // fail-closed：分辨率缺失/无法归一（normalizeResolution→''）时立即返回 null。
+  // 否则空/脏分辨率会经 matchRow 命中「resolution:null」的国际行（其 costPriceComputed 非空），
+  // 用错档成本「顶替他档价」——与 resolveListPrice(155 的 typeof number 守卫) 对齐，绝不猜价。
+  if (normalizeResolution(q.resolution) === '') return null;
   for (const r of scopedRows(cache, q.scope)) {
     if (
       matchRow(r, q.model, q.resolution, q.refVideo) &&

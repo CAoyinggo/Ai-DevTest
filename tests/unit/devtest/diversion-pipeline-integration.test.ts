@@ -187,6 +187,77 @@ describe('DiversionEligibilityProducer (预测 vs 落库分流标记)', () => {
   });
 });
 
+describe('DiversionEligibilityProducer — fail-open 回归锁（本轮新增，守脏标记/config-error 假绿）', () => {
+  const predictDivert: DiversionEligibilityInput = {
+    mediaType: 'video',
+    video: {
+      routeMode: 'newapi',
+      eligible: true,
+      modelId: 78,
+      isGlobalModel: true,
+      alias: 'seedance-2.0',
+      hasGlobalApiKey: true,
+      resolution: '720p',
+      aspect: '16:9',
+      routeRules,
+    },
+  };
+
+  it('对抗：预测 hardError(CONFIG_ERROR 提交中断) + 落库「未分流」→ UNVERIFIED，绝不因 diverted 布尔巧合伪造 PASS', () => {
+    // 全量模型但全局Key未配置 → evaluateVideoDiversion 返回 { line:0, decision:'CONFIG_ERROR', hardError:true }。
+    // 这不是「干净地判定不分流」，而是 PHP 侧抛异常中断提交。落库恰为未分流(diversion=0→observedDiverted=false)。
+    // 修复前：predicted.diverted(false) === observedDiverted(false) → matched=true → PASS（假绿！config-error 冒充分流验证通过）。
+    // 修复后：predicted.hardError → 强制 UNVERIFIED。
+    const hardErrInput: DiversionEligibilityInput = {
+      mediaType: 'video',
+      video: {
+        routeMode: 'newapi',
+        eligible: true,
+        modelId: 78,
+        isGlobalModel: true,
+        alias: 'seedance-2.0',
+        hasGlobalApiKey: false, // ← 全局Key缺失 → CONFIG_ERROR/hardError
+        resolution: '720p',
+        aspect: '16:9',
+        routeRules,
+      },
+    };
+    const e = new DiversionEligibilityProducer(hardErrInput, dbWith({ diversion: 0 })).produce({}, ctx)[0];
+    expect(e.normalizedFields.predictedDecision).toBe('CONFIG_ERROR');
+    expect(e.normalizedFields.predictedHardError).toBe(true);
+    expect(e.observationStatus).toBe('UNVERIFIED'); // ← 关键：不是 PASS
+    expect(e.normalizedFields.matched).toBeUndefined();
+    expect(e.confidence).toBe(0);
+  });
+
+  it('对抗：落库 diversion 为脏字符串("foo") → Number→NaN 不得冒充「已观测」→ UNVERIFIED（无有效对照）', () => {
+    // 修复前：Number('foo')=NaN，`NaN !== undefined` 骗过守卫 → hasObserved=true, observedDiverted=(NaN===10)=false。
+    //   预测分流(diverted=true) vs observedDiverted=false → matched=false → FAIL（假红！脏数据伪造出「路由不符」）；
+    //   若预测未分流则伪造 PASS（假绿）。两向都错。
+    // 修复后：numMarker('foo')=undefined → 三标记皆 undefined → hasObserved=false → UNVERIFIED。
+    const e = new DiversionEligibilityProducer(predictDivert, dbWith({ diversion: 'foo' })).produce({}, ctx)[0];
+    expect(e.normalizedFields.hasObserved).toBe(false);
+    expect(e.observationStatus).toBe('UNVERIFIED');
+    expect(e.normalizedFields.matched).toBeUndefined();
+  });
+
+  it('对抗：落库 diversion 为空串("") → Number("")=0 的陷阱不得冒充「未分流」→ UNVERIFIED', () => {
+    // 修复前：extra.diversion='' 使 `'' !== undefined` 为真，Number('')=0 → observedDiverted=(0===10)=false → hasObserved=true，
+    //   伪造出一个确定的「未分流」对照。修复后：numMarker('')=undefined → hasObserved=false → UNVERIFIED。
+    const e = new DiversionEligibilityProducer(predictDivert, dbWith({ diversion: '' })).produce({}, ctx)[0];
+    expect(e.normalizedFields.hasObserved).toBe(false);
+    expect(e.observationStatus).toBe('UNVERIFIED');
+  });
+
+  it('对抗：落库 line 为脏字符串 + diversion 缺失 → 不得因 NaN 冒充 line 对照 → UNVERIFIED', () => {
+    // line 走 pq_volcengine_ai_task.line；脏值 Number('x')=NaN 同样会骗过 `!== undefined`。numMarker 统一收口。
+    const db = dbWith({}, 'x' as unknown as number);
+    const e = new DiversionEligibilityProducer(predictDivert, db).produce({}, ctx)[0];
+    expect(e.normalizedFields.hasObserved).toBe(false);
+    expect(e.observationStatus).toBe('UNVERIFIED');
+  });
+});
+
 describe('verify() 集成：diversionEligibility 自动挂载 producer', () => {
   it('传入 diversionEligibility 时结果含 SERVER_API:DIVERSION_ELIGIBILITY 信封', async () => {
     const result = await verify({
