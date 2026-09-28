@@ -346,7 +346,7 @@ describe('Panqu AI DevTest — 五项能力真实成熟度与能力做实测试'
   // ==========================================================================
   describe('6. 候选需求映射文件 (devtest-requirements.candidate.json) 物理存在与可验证性', () => {
     it('6.1 候选文件物理存在，且包含可证明的 5 条需求追踪映射', () => {
-      const candidateFilePath = path.resolve(process.cwd(), 'devtest-requirements.candidate.json');
+      const candidateFilePath = path.resolve(process.cwd(), 'docs/devtest-requirements.candidate.json');
       expect(fs.existsSync(candidateFilePath)).toBe(true);
 
       const res = findAuthoritativeRequirementTraces({ filePath: candidateFilePath });

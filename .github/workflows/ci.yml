@@ -160,7 +160,7 @@ jobs:
           : > security-reports/gitleaks.json
           scan_status=0
           docker run --rm --user root -v "$PWD:/path" zricethezav/gitleaks:latest \
-            detect --redact --report-format json --report-path /path/security-reports/gitleaks.json --source /path --gitleaks-ignore-path /path/.gitleaksignore --exit-code 42 || scan_status=$?
+            detect --redact --report-format json --report-path /path/security-reports/gitleaks.json --source /path --gitleaks-ignore-path /path/.github/.gitleaksignore --exit-code 42 || scan_status=$?
           if [ ! -s security-reports/gitleaks.json ]; then
             echo "❌ Gitleaks 未执行或报告缺失"
             exit 2

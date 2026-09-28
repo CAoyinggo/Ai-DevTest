@@ -1,7 +1,7 @@
 {
   "name": "ai-devtest",
   "version": "6.0.0",
-  "description": "Ai-DevTest 纯净测试副驾（双模同源版）",
+  "description": "面向 AI 图片与视频生成链路的自动化测试工具",
   "type": "module",
   "main": "./dist/src/devtest/index.js",
   "types": "./dist/src/devtest/index.d.ts",
@@ -23,6 +23,15 @@
     "devtest": "node dist/bin/devtest-cli.js",
     "devtest-mcp": "node dist/bin/devtest-mcp.js"
   },
+  "prettier": {
+    "singleQuote": true,
+    "trailingComma": "all",
+    "printWidth": 120,
+    "semi": true,
+    "tabWidth": 2,
+    "endOfLine": "lf",
+    "arrowParens": "always"
+  },
   "engines": {
     "node": ">=20.0.0"
   },
@@ -40,3 +49,4 @@
     "p-limit": "^7.3.1"
   }
 }
+
