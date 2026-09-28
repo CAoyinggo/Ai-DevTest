@@ -1,0 +1,52 @@
+flowchart TD
+    classDef startEnd fill:#f8fafc,stroke:#475569,stroke-width:1.5px,color:#0f172a
+    classDef gateNode fill:#eff6ff,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
+    classDef passNode fill:#f0fdf4,stroke:#16a34a,stroke-width:2px,color:#15803d
+    classDef failNode fill:#fef2f2,stroke:#dc2626,stroke-width:2px,color:#b91c1c
+    classDef blockNode fill:#fffbeb,stroke:#d97706,stroke-width:2px,color:#b45309
+    classDef stepNode fill:#ffffff,stroke:#64748b,stroke-width:1.5px,color:#1e293b
+    classDef actionNode fill:#f1f5f9,stroke:#94a3b8,stroke-width:1px,color:#334155
+
+    INPUT(["📥 触发输入: 业务任务与执行上下文 (TaskId / Session / Spec)"]) --> C_VALID{"① 规约合法性自检<br/>(Spec Admission Guard)"}
+
+    C_VALID -- "空规约 / 无断言无必需证据" --> R_EMPTY["⚠️ 1.1 最小证据底线阻断<br/>[NO_EVALUABLE_EVIDENCE_SPEC]"] --> V_UNVER
+
+    C_VALID -- "规约合法" --> HARVEST["② 汇聚多维物理客观证据链 (Physical Evidence Gathering)"]
+
+    HARVEST --> E_DB["🗄️ SSH 隧道 MySQL 只读取证<br/>SELECT pq_aivideo_new & pq_score_log"]
+    HARVEST --> E_BIN["🎬 二进制流式 Range 探测<br/>MP4 moov atom 解析 / 容器验真"]
+    HARVEST --> E_BILL["💰 账务三大不变量核算<br/>计费扣费与冲正退款流水"]
+    HARVEST --> E_DIV["🔀 分流规则与渠道权威匹配<br/>line=10 判定 / 飞书刊例价"]
+
+    E_DB & E_BIN & E_BILL & E_DIV --> C_FILTER{"③ 凭据校验与防伪隔离<br/>(Evidence Integrity Filter)"}
+
+    C_FILTER -- "信封伪造 / 哈希不一致" --> R_SPOOF["⚠️ 凭据校验失败<br/>[EVIDENCE_HASH_MISMATCH]"] --> V_UNVER
+    C_FILTER -- "REAL 模式引用外部假断言" --> R_ASSERT["⚠️ 伪真断言驳回<br/>[USER_ASSERTION_REJECTED]"] --> V_UNVER
+
+    C_FILTER -- "证据信封合规" --> C_CRIT{"④ 关键确定性断言求值<br/>(Critical Assertions Check)"}
+
+    C_CRIT -- "任务未入库 / 状态非终态 / 净扣错账" --> R_CRIT_FAIL["❌ 关键物理断言失败<br/>[PHYSICAL_ASSERTION_FAIL]"] --> V_FAIL
+
+    C_CRIT -- "断言全部通过" --> C_REQ{"⑤ 必需证据契约评估<br/>(Required Evidence Complete?)"}
+
+    C_REQ -- "凭据缺失 / SSH 中断 / 流水缺失" --> R_MISSING["⚠️ 必需证据缺失或受阻<br/>[BLOCKER_ACCUMULATED]"] --> V_UNVER
+    C_REQ -- "全部必需证据通过 (PASS)" --> V_PASS
+
+    V_FAIL["❌ FAIL<br/>业务或物理断言明确失败"]
+    V_UNVER["⚠️ UNVERIFIED<br/>物理证据缺口 · 结构化 Blocker 阻断"]
+    V_PASS["✅ PASS<br/>全链路物理证据闭环 · 零假 PASS"]
+
+    V_FAIL --> P_REJ["投影: acceptance: REJECTED"]
+    V_UNVER --> P_BLK["投影: acceptance: BLOCKED"]
+    V_PASS --> P_ACC["投影: acceptance: ACCEPTED"]
+
+    P_REJ & P_BLK & P_ACC --> DISPATCH["💾 单向只写归档 (ResultSink NDJSON 递归深冻结)"]
+    DISPATCH --> DONE(["🏁 终端人读高亮呈现 + 证据报告交付"])
+
+    class INPUT,DONE startEnd
+    class C_VALID,C_FILTER,C_CRIT,C_REQ gateNode
+    class HARVEST,E_DB,E_BIN,E_BILL,E_DIV stepNode
+    class R_EMPTY,R_SPOOF,R_ASSERT,R_CRIT_FAIL,R_MISSING,DISPATCH actionNode
+    class V_PASS,P_ACC passNode
+    class V_FAIL,P_REJ failNode
+    class V_UNVER,P_BLK blockNode

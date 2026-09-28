@@ -1,0 +1,54 @@
+flowchart TD
+    classDef specNode fill:#eff6ff,stroke:#3b82f6,stroke-width:1.5px,color:#1e40af
+    classDef kernelNode fill:#f5f3ff,stroke:#7c3aed,stroke-width:2px,color:#5b21b6
+    classDef adapterNode fill:#faf5ff,stroke:#a855f7,stroke-width:1.5px,color:#6b21a8
+    classDef evidenceNode fill:#f0fdf4,stroke:#16a34a,stroke-width:1.5px,color:#15803d
+    classDef hubNode fill:#f8fafc,stroke:#334155,stroke-width:2px,color:#0f172a
+    classDef engineNode fill:#eff6ff,stroke:#1d4ed8,stroke-width:2.5px,color:#1e3a8a
+    classDef gateNode fill:#f8fafc,stroke:#94a3b8,stroke-width:1px,color:#475569
+    classDef outNode fill:#f8fafc,stroke:#64748b,stroke-width:1.5px,color:#1e293b
+    classDef sinkNode fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#065f46
+
+    REQ["📋 业务需求变更 / Git Diff / 需求意图"] --> TRACE["RequirementTrace<br/>• 变更关联分析 • 纯函数影响域推导"]
+    TRACE --> SPEC["📜 CanonicalTestSpec 规约<br/>• 确定性断言 • 预算门禁 • 副作用策略 (默认只读)"]
+
+    SPEC ==> KERNEL[["⚙️ core-kernel.ts 统一调度中枢<br/>probe() · plan() · execute() · verify()"]]
+    
+    KERNEL -->|"探活画像"| ACT_PROBE["🔍 probe() 环境与模型画像发现"]
+    KERNEL -->|"分流推导"| ACT_PLAN["🔀 plan() 决策消除歧义与刊例预算"]
+    KERNEL -->|"受控派发"| ACT_EXEC["🚀 execute() 受控派发与状态跟踪"]
+    KERNEL ==>|"权威验真"| ACT_VERIFY["🛡️ verify() 物理证据汇聚与裁决"]
+
+    ACT_EXEC --> ADAPT["🔌 PanquMediaExecutionAdapter<br/>API 提交流水 / 严格隔离写副作用"]
+    
+    ACT_VERIFY --> P_DB["🗄️ DatabaseEvidenceProducer<br/>SSH 跳板机隧道 ➔ MySQL 只读 SELECT 对账"]
+    ACT_VERIFY --> P_BILL["💰 BillingLedgerReconciler<br/>预扣/净扣/退款三大金融不变量核算"]
+    ACT_VERIFY --> P_MEDIA["🎬 MediaInspector<br/>MP4 moov atom 流式解析 / Range 探测"]
+    ACT_VERIFY --> P_DIV["📊 DiversionEligibilityProducer<br/>line=10 分流规则 · 飞书权威渠道表"]
+    ACT_VERIFY --> P_UI["🖥️ UI Fact Seam<br/>DOM / 网络 / 视觉辅助 (仅 AI 观察)"]
+
+    ADAPT -.-> ENV
+    P_DB & P_BILL & P_MEDIA & P_DIV & P_UI ==> ENV[("📦 CanonicalEvidenceEnvelope Hub<br/>不可变信封 · 来源隔离 · 真实性防伪验签")]
+
+    SPEC ==> ENGINE
+    ENV ==> ENGINE{{"⚖️ CanonicalVerdictEngine<br/>全系统唯一最终裁决源: PASS | FAIL | UNVERIFIED"}}
+
+    ENGINE -.-> G1["门禁①: 1.1 最小规约底线 (空规约必阻断)"]
+    ENGINE -.-> G2["门禁②: 关键断言强求值 (断言失败一票否决)"]
+    ENGINE -.-> G3["门禁③: 必需证据匹配 (缺物理证据不放行)"]
+    ENGINE -.-> G4["门禁④: 来源隔离 (外部声明不得冒充网关事实)"]
+
+    ENGINE ==>|"只读单向投影"| PROJ["projectCanonicalVerdictToLegacy()"]
+    PROJ --> CLI["💻 devtest CLI (终端人读高亮 + JSON 管道)"]
+    PROJ --> MCP["🤖 Trae / Cursor MCP (stdio 协议自动化工具)"]
+    ENGINE ==>|"只写不读深冻结"| SINK[("💾 ResultSink 结果归档<br/>NDJSON 单向持久化 · 绝不回写状态")]
+
+    class REQ,TRACE,SPEC specNode
+    class KERNEL,ACT_PROBE,ACT_PLAN,ACT_EXEC,ACT_VERIFY kernelNode
+    class ADAPT adapterNode
+    class P_DB,P_BILL,P_MEDIA,P_DIV,P_UI evidenceNode
+    class ENV hubNode
+    class ENGINE engineNode
+    class G1,G2,G3,G4 gateNode
+    class PROJ,CLI,MCP outNode
+    class SINK sinkNode

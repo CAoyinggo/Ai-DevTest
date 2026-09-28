@@ -1,0 +1,13 @@
+flowchart TD
+    START(["输入: 证据信封 + 声明式断言 + 必需证据契约"]) --> CRIT{"任一必需证据 FAIL<br>或任一确定性断言 FAIL?"}
+    CRIT -- 是 --> FAIL["❌ FAIL (业务明确失败)"]
+    CRIT -- 否 --> BLOCK{"存在门禁阻断 (Blocker)<br>或必需证据缺失 / 空规格?"}
+    BLOCK -- 是 --> UNVER["⚠️ UNVERIFIED (+ Blocker)<br>兼容投影为 acceptance: BLOCKED"]
+    BLOCK -- 否 --> PASS["✅ PASS (全部必需证据与断言闭环)"]
+
+    style START fill:#f8fafc,stroke:#475569,stroke-width:1.5px,color:#0f172a
+    style CRIT fill:#eff6ff,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
+    style BLOCK fill:#eff6ff,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
+    style FAIL fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#dc2626
+    style UNVER fill:#fffbeb,stroke:#d97706,stroke-width:2px,color:#d97706
+    style PASS fill:#f0fdf4,stroke:#16a34a,stroke-width:2px,color:#16a34a
