@@ -52,11 +52,7 @@ describe('applyDbAuthoritativeExpectedReprice - DB 权威重定价 (假 FP-005 �
 
   it('(a) 真实模型命中目录: 4519 真实模型 57(1K=7) 覆盖默认猜测 201=5，消除假超扣', () => {
     const ctx = makeCtx();
-    applyDbAuthoritativeExpectedReprice(
-      ctx,
-      makeOptions(),
-      makeTaskResult({ selmodelsId: '57', resolution: '1K' }),
-    );
+    applyDbAuthoritativeExpectedReprice(ctx, makeOptions(), makeTaskResult({ selmodelsId: '57', resolution: '1K' }));
     expect(ctx.expectedPoints).toBe(7);
     expect(ctx.systemCalculatedExpectedPoints).toBe(7);
     expect(ctx.contract.pricing.allowPass).toBe(true); // 有刊例，不降级
@@ -124,11 +120,7 @@ describe('applyDbAuthoritativeExpectedReprice - DB 权威重定价 (假 FP-005 �
 
   it('门禁: 真实模型恰等于默认猜测值(201) 时零改变', () => {
     const ctx = makeCtx();
-    applyDbAuthoritativeExpectedReprice(
-      ctx,
-      makeOptions(),
-      makeTaskResult({ selmodelsId: '201', resolution: '1K' }),
-    );
+    applyDbAuthoritativeExpectedReprice(ctx, makeOptions(), makeTaskResult({ selmodelsId: '201', resolution: '1K' }));
     expect(ctx.expectedRepriceNote).toBeUndefined();
   });
 

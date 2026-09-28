@@ -168,8 +168,7 @@ export class DiversionEligibilityProducer implements EvidenceProducer {
           matched,
         },
         provenance: 'DIVERSION_ELIGIBILITY:newapi_route_rules_gate(model×resolution×aspect×enabled)',
-        confidence:
-          predicted.decision === 'NO_INPUT' || predicted.hardError ? 0.0 : observed.hasObserved ? 1.0 : 0.0,
+        confidence: predicted.decision === 'NO_INPUT' || predicted.hardError ? 0.0 : observed.hasObserved ? 1.0 : 0.0,
         immutable: true,
         redacted: false,
         collectionStatus: observed.hasObserved ? 'SUCCESS' : 'MISSING',

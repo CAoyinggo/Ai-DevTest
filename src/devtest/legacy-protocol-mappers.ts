@@ -1240,8 +1240,7 @@ export function buildCanonicalEvidenceFromVerifyFacts(
     // 归属缺失/未知 (undefined) 一律按"未验真"处理——绝不因"没说 UNVERIFIED"就默认已验真。
     // 堵住"有产物但无任何归属证据 → MEDIA_BINARY 假 PASS"向量（旧 `!== 'UNVERIFIED'` 会把 undefined 当已验真）。
     // 与 env-probe `=== 'VALID'`、业务校验 `?? 'UNVERIFIED'` 同一纪律；真实流水线 ownership 恒有值 (VERIFIED|UNVERIFIED)，此改对 live 裁决零行为变化，仅收敛桥接层/部分构造入参的失效开口。
-    const isOwnershipVerified =
-      facts.artifactOwnership === 'VERIFIED' && facts.artifact.ownership !== 'UNVERIFIED';
+    const isOwnershipVerified = facts.artifactOwnership === 'VERIFIED' && facts.artifact.ownership !== 'UNVERIFIED';
     const isMediaPass = Boolean(facts.artifact.decodable) && isOwnershipVerified;
     const isFileAccessible = facts.artifact.fileAccessible !== false;
     const collectionStatus: EvidenceCollectionStatus = isFileAccessible ? 'SUCCESS' : 'MISSING';
@@ -1528,8 +1527,11 @@ export function buildCanonicalEvidenceFromVerifyFacts(
     // Fail-closed 三态映射：REGRESSION→FAIL；CLEAN→PASS；UNKNOWN(基线比对关键证据不全，无法证明无回归)→UNVERIFIED。
     // 绝不把「无法确定的回归比对」静默判为 PASS 去满足 REGRESSION_BASELINE 必需证据 (零假 PASS)。
     // 与 DiffItem 的 UNKNOWN→BLOCKED (verdict-projection) 及本信封 assertionMatched=false / actualValue='UNKNOWN' 保持一致。
-    const observationStatus: EvidenceObservationStatus =
-      isRegression ? 'FAIL' : regStatus === 'CLEAN' ? 'PASS' : 'UNVERIFIED';
+    const observationStatus: EvidenceObservationStatus = isRegression
+      ? 'FAIL'
+      : regStatus === 'CLEAN'
+        ? 'PASS'
+        : 'UNVERIFIED';
 
     envelopes.push({
       evidenceId: `${testId}-regression-1`,

@@ -985,7 +985,9 @@ export async function queryTaskRuntimeDetails(
               result.backendTaskId = Number(row.id);
             }
             const rowExtra: Record<string, unknown> | undefined =
-              typeof row.extra === 'string' ? JSON.parse(row.extra) : (row.extra as Record<string, unknown> | undefined);
+              typeof row.extra === 'string'
+                ? JSON.parse(row.extra)
+                : (row.extra as Record<string, unknown> | undefined);
             if (rowExtra?.retry_provider) {
               result.retryProvider = String(rowExtra.retry_provider);
             }

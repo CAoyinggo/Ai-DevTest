@@ -767,8 +767,7 @@ export async function runDevTestCli(
           undefined;
 
         const sideEffectPolicy = (options['side-effect-policy'] || options.sideEffectPolicy) as
-          | SideEffectPolicy
-          | undefined;
+          SideEffectPolicy | undefined;
         const allowSubmit = Boolean(options['allow-submit'] || options.allowSubmit);
         const allowPaid = Boolean(options['allow-paid'] || options.allowPaid);
         const maxCostPoints =

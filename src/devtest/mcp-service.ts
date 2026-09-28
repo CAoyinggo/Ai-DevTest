@@ -909,7 +909,8 @@ ${verifyRes.reasons.length > 0 ? `- **核验明细**: ${verifyRes.reasons.join('
                 : undefined,
           baseline: args.baseline as DiversionBaseline | undefined,
           unconfirmedStatic: Boolean(args.unconfirmed_static ?? args.unconfirmedStatic),
-          apiResult: (args.api_result || args.apiResult) as { ok: boolean; code?: number; message?: string } | undefined,
+          apiResult: (args.api_result || args.apiResult) as
+            { ok: boolean; code?: number; message?: string } | undefined,
           folderId: typeof args.folder_id === 'number' ? args.folder_id : undefined,
           isFolderInProject: typeof args.is_folder_in_project === 'boolean' ? args.is_folder_in_project : undefined,
         });

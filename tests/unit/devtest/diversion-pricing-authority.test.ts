@@ -112,9 +112,15 @@ describe('diversion-pricing-authority (飞书分流渠道表权威)', () => {
     // 合法 480p 仍可解析（不误伤既有能力，与上面 0.672 断言一致）
     expect(resolveChannelCost(c, { model: 'Seedance2.5', resolution: '480p', channel: '火山' })).toBeCloseTo(0.672, 4);
     // 空 / 乱码无数字 / 纯空格分辨率，跨 international/all 作用域：一律 null，绝不顶替
-    expect(resolveChannelCost(c, { model: 'Seedance2.5', resolution: '', channel: '火山', scope: 'international' })).toBeNull();
-    expect(resolveChannelCost(c, { model: 'Seedance2.5', resolution: '乱码无数字', channel: '火山', scope: 'all' })).toBeNull();
-    expect(resolveChannelCost(c, { model: 'Seedance2.5', resolution: '   ', channel: '火山', scope: 'international' })).toBeNull();
+    expect(
+      resolveChannelCost(c, { model: 'Seedance2.5', resolution: '', channel: '火山', scope: 'international' }),
+    ).toBeNull();
+    expect(
+      resolveChannelCost(c, { model: 'Seedance2.5', resolution: '乱码无数字', channel: '火山', scope: 'all' }),
+    ).toBeNull();
+    expect(
+      resolveChannelCost(c, { model: 'Seedance2.5', resolution: '   ', channel: '火山', scope: 'international' }),
+    ).toBeNull();
   });
 });
 
