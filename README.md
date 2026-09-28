@@ -32,7 +32,7 @@ Panqu AI DevTest 是轻量、纯净、无副作用的测试工程副驾。它负
 
 系统遵循严格的**单向无环数据流（Unidirectional DAG，运行时环路严格为 0）**，确立了 **“规约驱动（Spec-Driven）➔ 事实收集（Evidence Collection）➔ 唯一裁决（Canonical Verdict）➔ 投影呈现（Projection）”** 的核心管线：
 
-![全景系统架构拓扑](docs/assets/architecture-topology.svg)
+![全景系统架构拓扑](docs/assets/architecture-topology.png)
 
 
 ---
@@ -54,14 +54,14 @@ Panqu AI DevTest 是轻量、纯净、无副作用的测试工程副驾。它负
 
 每次验证严格按照以下状态机执行，实现物理级防作弊与 Fail-Closed 判定：
 
-![核心数据流与裁决状态机](docs/assets/verdict-state-machine.svg)
+![核心数据流与裁决状态机](docs/assets/verdict-state-machine.png)
 
 
 ---
 
 ## 🎛️ 四大核心动作闭环
 
-![四大核心动作闭环](docs/assets/core-actions.svg)
+![四大核心动作闭环](docs/assets/core-actions.png)
 
 
 - **`probe()`**：环境连通、脱敏凭证有效性感知与模型白名单探测。无裁决权。（`--mock` 为离线仿真，人读报告标注 `[MOCK]`）
@@ -73,7 +73,7 @@ Panqu AI DevTest 是轻量、纯净、无副作用的测试工程副驾。它负
 
 ## ⚖️ 零假 PASS 裁决门禁（确定性 Fail-Closed）
 
-![零假 PASS 裁决门禁](docs/assets/zero-false-pass.svg)
+![零假 PASS 裁决门禁](docs/assets/zero-false-pass.png)
 
 
 > [!CAUTION]
