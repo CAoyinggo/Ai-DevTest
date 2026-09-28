@@ -1097,6 +1097,12 @@ export interface CanonicalVerifyFacts {
 
   // DB Extra 落库事实 (可选)
   isDbExtraVerified?: boolean;
+  // extra 取证来源 (可选)：工具实测 (HTTP_API:* / DATABASE_PHYSICAL_RECORD) 才可判 SERVER_API 事实,
+  // operator 手填 (CLI_MANUAL_INPUT / TASK_DETAIL / DB_READONLY_QUERY) 或裸 --db-extra-confirmed (UNVERIFIED)
+  // 一律降级 USER_ASSERTION, 绝不冒充服务端观测。
+  extraProvenance?: string;
+  // 工具是否亲自观测到 diversion/newapi_image 落库信号 (与 operator 断言严格区分)。
+  extraDiversionObserved?: boolean;
 }
 
 /**
@@ -1618,12 +1624,27 @@ export function buildCanonicalEvidenceFromVerifyFacts(
   // 9. DB Extra 落库事实证据 (Extra Diversion Evidence)
   if (facts.isDbExtraVerified !== undefined) {
     const isPass = facts.isDbExtraVerified === true;
+    // 防伪/供地：extra.diversion「已核实」只有当**工具亲自**从服务端只读观测到该落库信号
+    // (extraProvenance ∈ HTTP_API:* / DATABASE_PHYSICAL_RECORD 且 extraDiversionObserved===true) 才算 SERVER_API 事实。
+    // operator 经 --db-extra-confirmed 裸布尔 (extraProvenance='UNVERIFIED')、或手填 dbExtra/extra/taskDetail
+    // (CLI_MANUAL_INPUT / DB_READONLY_QUERY / TASK_DETAIL) 传入的「断言」绝不可冒充 SERVER_API —— 否则操作者仅凭
+    // 一个布尔即可「自证」分流落库, 满足 REAL 模式必需键 SERVER_API:EXTRA_DIVERSION → 假 PASS。REAL 模式下一律
+    // 如实降级 USER_ASSERTION:EXTRA_DIVERSION, 令必需键 SERVER_API:EXTRA_DIVERSION 无信封满足 (MISSING) +
+    // 来源隔离 (canonical-protocol.ts:711) 双重拒绝 → fail-closed UNVERIFIED。对 FIXTURE/OFFLINE 与工具实测来源零行为变化。
+    const extraProv = facts.extraProvenance ?? 'UNVERIFIED';
+    const isToolObservedExtra = extraProv.startsWith('HTTP_API:') || extraProv.startsWith('DATABASE_PHYSICAL_RECORD');
+    const isServerVerifiedExtra = isReal && isToolObservedExtra && facts.extraDiversionObserved === true;
+    const extraEvidenceKey = isServerVerifiedExtra
+      ? 'SERVER_API:EXTRA_DIVERSION'
+      : isReal
+        ? 'USER_ASSERTION:EXTRA_DIVERSION'
+        : 'FIXTURE:EXTRA_DIVERSION';
     envelopes.push({
       evidenceId: `${testId}-extra-diversion-1`,
       testId,
       sourceTool: 'media-flow.extra',
-      sourceType: isReal ? 'SERVER_API' : 'FIXTURE',
-      evidenceKey: isReal ? 'SERVER_API:EXTRA_DIVERSION' : 'FIXTURE:EXTRA_DIVERSION',
+      sourceType: isServerVerifiedExtra ? 'SERVER_API' : isReal ? 'USER_ASSERTION' : 'FIXTURE',
+      evidenceKey: extraEvidenceKey,
       observationStatus: isPass ? 'PASS' : 'UNVERIFIED',
       capturedAt,
       environment,
@@ -1635,8 +1656,13 @@ export function buildCanonicalEvidenceFromVerifyFacts(
         expectedValue: 'extra.diversion=10',
         assertionMatched: isPass,
       },
-      provenance: isReal ? 'SERVER_API (/aivideo/v2/video/getEditData)' : 'FIXTURE (db_extra)',
-      confidence: isPass ? 1.0 : 0.0,
+      provenance: isServerVerifiedExtra
+        ? `SERVER_API (/aivideo/v2/video/getEditData) [${extraProv}]`
+        : isReal
+          ? `USER_ASSERTION (operator 断言/手填 extra，未经工具实测服务端观测: ${extraProv})`
+          : 'FIXTURE (db_extra)',
+      // 工具实测 SERVER_API 或 FIXTURE 的 PASS 保持满信心；REAL 模式下的 operator 断言降级 (USER_ASSERTION) 归零信心。
+      confidence: isPass && (isServerVerifiedExtra || !isReal) ? 1.0 : 0.0,
       immutable: true,
       redacted: true,
       collectionStatus: isPass ? 'SUCCESS' : 'MISSING',

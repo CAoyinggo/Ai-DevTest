@@ -1010,6 +1010,15 @@ export async function computeFinalVerdict(args: ComputeFinalVerdictArgs): Promis
           }
         : undefined,
     isDbExtraVerified,
+    // extra 取证来源 + 工具是否亲自观测到 diversion 信号：供信封层区分「工具实测 SERVER_API 事实」与
+    // 「operator 断言 (裸 --db-extra-confirmed / 手填 extra)」，后者在 REAL 模式降级 USER_ASSERTION (fail-closed)。
+    extraProvenance,
+    extraDiversionObserved: Boolean(
+      extraObj &&
+      typeof extraObj === 'object' &&
+      ((extraObj as Record<string, unknown>).diversion !== undefined ||
+        (extraObj as Record<string, unknown>).newapi_image !== undefined),
+    ),
     routingReconciliation: routingPredictionMismatch
       ? {
           predictedDivert: Boolean(contract.routing.value.willDivert),

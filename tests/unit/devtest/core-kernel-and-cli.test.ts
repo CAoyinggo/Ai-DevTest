@@ -1343,11 +1343,26 @@ describe('3. 边界核验与双模一致性 (Idempotency & Boundary Audits)', ()
       timeline: [],
     });
 
+    // 工具亲自从任务自有快照 URL 下载字节 → 归属 TASK_SNAPSHOT/VERIFIED（真实 happy path）。
+    // 取代此前预置 artifactBuffer 的取巧写法：预置 buffer 在真实模式下现按 fail-closed 归 EXTERNAL_BUFFER/UNVERIFIED，
+    // 故若仍注入 buffer 便无法"挣得"TASK_SNAPSHOT；这里改为真正让工具下载快照产物，验真链路才是诚实的。
+    global.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.includes('sample.mp4')) {
+        return {
+          ok: true,
+          status: 206,
+          statusText: 'Partial Content',
+          arrayBuffer: async () =>
+            validMp4.buffer.slice(validMp4.byteOffset, validMp4.byteOffset + validMp4.byteLength),
+        } as unknown as Response;
+      }
+      return originalFetch(url, init);
+    });
+
     const res = await verify({
       taskId: 77718,
       baseUrl: 'https://test.panqu.com',
       cookies: 'PHPSESSID=mock_session_123',
-      artifactBuffer: validMp4,
       expectedPoints: 28,
       expectedChargeSource: 'REAL_BILLING_FACT',
       gatewaySnapshot: {
@@ -1838,13 +1853,26 @@ describe('E2E 闭环收口与防假 PASS 状态机测试 (v6.0.0 Hardening)', ()
       ],
     });
 
+    // 工具亲自从任务自有快照 URL 下载 → 归属 TASK_SNAPSHOT/VERIFIED（真实 happy path，取代预置 buffer 取巧）。
+    global.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.includes('output_91001.mp4')) {
+        return {
+          ok: true,
+          status: 206,
+          statusText: 'Partial Content',
+          arrayBuffer: async () =>
+            validMp4.buffer.slice(validMp4.byteOffset, validMp4.byteOffset + validMp4.byteLength),
+        } as unknown as Response;
+      }
+      return originalFetch(url, init);
+    });
+
     const res = await verify({
       taskId: 91001,
       modelId: 84,
       mediaType: 'video',
       baseUrl: 'https://test-main.example.com',
       cookies: 'PHPSESSID=mock_session_123',
-      assetBuffer: validMp4,
       dbExtraConfirmed: true,
       gatewaySnapshot: {
         environment: 'test',

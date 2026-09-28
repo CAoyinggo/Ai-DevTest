@@ -1358,4 +1358,108 @@ describe('Legacy Protocol Mappers (Phase 1.3 & 1.3B)', () => {
       expect(reg!.normalizedFields?.observedStatus).toBe('UNVERIFIED');
     });
   });
+
+  // ==========================================================================
+  // 12. EXTRA_DIVERSION 归属防伪 (operator 断言不得冒充 SERVER_API 工具实测)
+  //    背景 (LIVE 假绿): 真实分流任务的必需键 SERVER_API:EXTRA_DIVERSION, 旧实现只要 isDbExtraVerified
+  //    (含 operator 经 --db-extra-confirmed 裸布尔 / 手填 dbExtra/extra/taskDetail) 即无条件盖
+  //    sourceType='SERVER_API' + observationStatus='PASS' + confidence 1.0, provenance 冒充
+  //    'SERVER_API (/aivideo/v2/video/getEditData)' —— 操作者仅凭一个布尔即可「自证」分流落库,
+  //    满足必需键 → 假 PASS, 且因被误标 SERVER_API 而绕过来源隔离 (canonical-protocol.ts:711)。
+  //    修复 (fail-closed): SERVER_API:EXTRA_DIVERSION 仅当**工具亲自**观测到 diversion/newapi_image
+  //    (extraProvenance ∈ HTTP_API:* / DATABASE_PHYSICAL_RECORD 且 extraDiversionObserved===true) 才判;
+  //    operator 断言一律降级 USER_ASSERTION:EXTRA_DIVERSION → 必需键 MISSING + 来源隔离双重拒绝。
+  //    12.1/12.2/12.3 在旧实现上必为 RED (旧实现产出 SERVER_API:EXTRA_DIVERSION)。
+  // ==========================================================================
+  describe('12. EXTRA_DIVERSION 归属防伪 (operator 断言不得冒充 SERVER_API)', () => {
+    const REAL_DIVERSION_SPEC = {
+      testId: 'v-extra-provenance',
+      executionMode: 'REAL',
+      requiredEvidence: ['SERVER_API:EXTRA_DIVERSION'],
+    } as unknown as CanonicalTestSpec;
+
+    const extraBase: CanonicalVerifyFacts = {
+      testId: 'v-extra-provenance',
+      capturedAt: FIXED_TIME,
+      executionMode: 'real',
+      taskId: 250001,
+    };
+
+    it('12.1 LIVE 锁: REAL + 裸 --db-extra-confirmed (extraProvenance=UNVERIFIED, 未观测) → 降级 USER_ASSERTION:EXTRA_DIVERSION, 绝不生成 SERVER_API:EXTRA_DIVERSION', () => {
+      const res = buildCanonicalEvidenceFromVerifyFacts({
+        ...extraBase,
+        isDbExtraVerified: true,
+        extraProvenance: 'UNVERIFIED',
+        extraDiversionObserved: false,
+      });
+      expect(res.success).toBe(true);
+      // 关键反证: 旧实现在此产出 SERVER_API:EXTRA_DIVERSION → RED
+      expect(res.value!.some((e) => e.evidenceKey === 'SERVER_API:EXTRA_DIVERSION')).toBe(false);
+      const extra = res.value!.find((e) => e.evidenceKey === 'USER_ASSERTION:EXTRA_DIVERSION');
+      expect(extra).toBeDefined();
+      expect(extra?.sourceType).toBe('USER_ASSERTION');
+      expect(extra?.confidence).toBe(0.0);
+      expect(extra?.provenance).toContain('USER_ASSERTION');
+      expect(extra?.provenance).not.toContain('SERVER_API');
+    });
+
+    it('12.2 第二道独立防线: operator 断言的 USER_ASSERTION:EXTRA_DIVERSION 无法满足 REAL 规范要求的 SERVER_API:EXTRA_DIVERSION (fail-closed → missing)', () => {
+      const res = buildCanonicalEvidenceFromVerifyFacts({
+        ...extraBase,
+        taskId: 250002,
+        isDbExtraVerified: true,
+        extraProvenance: 'UNVERIFIED',
+        extraDiversionObserved: false,
+      });
+      const evalRes = evaluateRequiredEvidence(REAL_DIVERSION_SPEC, res.value!);
+      expect(evalRes.missingEvidenceKeys).toContain('SERVER_API:EXTRA_DIVERSION');
+      expect(evalRes.matchedEnvelopes['SERVER_API:EXTRA_DIVERSION']).toBeUndefined();
+    });
+
+    it('12.3 手填 extra (CLI_MANUAL_INPUT) 即便含 diversion 字段仍属断言 → USER_ASSERTION, 绝不冒充 SERVER_API (operator 供给的对象非工具实测)', () => {
+      const res = buildCanonicalEvidenceFromVerifyFacts({
+        ...extraBase,
+        taskId: 250003,
+        isDbExtraVerified: true,
+        extraProvenance: 'CLI_MANUAL_INPUT',
+        extraDiversionObserved: true, // operator 手填对象里有 diversion, 但来源非工具观测
+      });
+      expect(res.value!.some((e) => e.evidenceKey === 'SERVER_API:EXTRA_DIVERSION')).toBe(false);
+      const extra = res.value!.find((e) => e.evidenceKey === 'USER_ASSERTION:EXTRA_DIVERSION');
+      expect(extra?.sourceType).toBe('USER_ASSERTION');
+      expect(extra?.provenance).not.toContain('SERVER_API');
+    });
+
+    it('12.4 行为不变量: 工具实测 (extraProvenance=HTTP_API:getEditData + extraDiversionObserved) → 如实 SERVER_API:EXTRA_DIVERSION PASS 并满足必需证据 (绝不误伤真绿)', () => {
+      const res = buildCanonicalEvidenceFromVerifyFacts({
+        ...extraBase,
+        taskId: 250004,
+        isDbExtraVerified: true,
+        extraProvenance: 'HTTP_API:getEditData',
+        extraDiversionObserved: true,
+      });
+      const extra = res.value!.find((e) => e.evidenceKey === 'SERVER_API:EXTRA_DIVERSION');
+      expect(extra).toBeDefined();
+      expect(extra?.sourceType).toBe('SERVER_API');
+      expect(extra?.observationStatus).toBe('PASS');
+      expect(extra?.confidence).toBe(1.0);
+      const evalRes = evaluateRequiredEvidence(REAL_DIVERSION_SPEC, res.value!);
+      expect(evalRes.missingEvidenceKeys).not.toContain('SERVER_API:EXTRA_DIVERSION');
+    });
+
+    it('12.5 FIXTURE 不误伤: OFFLINE/FIXTURE 模式 → FIXTURE:EXTRA_DIVERSION PASS, 绝不冒充 SERVER_API', () => {
+      const res = buildCanonicalEvidenceFromVerifyFacts({
+        ...extraBase,
+        taskId: 250005,
+        executionMode: 'fixture',
+        isDbExtraVerified: true,
+        extraProvenance: 'FIXTURE:exceptional-task',
+        extraDiversionObserved: true,
+      });
+      expect(res.value!.some((e) => e.evidenceKey === 'SERVER_API:EXTRA_DIVERSION')).toBe(false);
+      const extra = res.value!.find((e) => e.evidenceKey === 'FIXTURE:EXTRA_DIVERSION');
+      expect(extra?.sourceType).toBe('FIXTURE');
+      expect(extra?.observationStatus).toBe('PASS');
+    });
+  });
 });

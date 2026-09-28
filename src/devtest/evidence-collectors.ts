@@ -151,8 +151,14 @@ export async function collectTaskEvidence(
   let terminalStatus: 'SUCCESS' | 'FAILED' | 'TIMEOUT' | 'UNKNOWN' | 'PROCESSING';
   let taskEvidence: TaskEvidence;
   let mediaArtifactSource = artifactBuffer ? 'FIXTURE_BUFFER' : 'missing_buffer';
+  // fail-closed 归属默认：VERIFIED 必须"挣得"——仅当 operator 显式 artifactOwnership==='VERIFIED' 断言，
+  // 或工具亲自从任务自有快照/DB 落库 URL 下载字节（下方相应分支显式置 VERIFIED）时才判"已验真绑定"。
+  // undefined（未知/未声明）一律 UNVERIFIED，绝不因"没说 UNVERIFIED"就默认已验真。
+  // 堵住"真实成功任务 + 注入任意可解码 buffer → 冒充 TASK_SNAPSHOT/VERIFIED 骗取 MEDIA_BINARY:CONTAINER_CHECK 假 PASS"
+  // 及各非成功分支（PROCESSING/FAILED/未知/会话错误）携带 operator buffer 时的归属残留失效开口。
+  // 与桥接层 legacy-protocol-mappers:1243 `=== 'VERIFIED'`、env-probe `=== 'VALID'` 同一 fail-closed 纪律。
   let artifactOwnership: 'VERIFIED' | 'UNVERIFIED' =
-    options.artifactOwnership === 'UNVERIFIED' || options.artifactOwnership === 'UNBOUND' ? 'UNVERIFIED' : 'VERIFIED';
+    options.artifactOwnership === 'VERIFIED' ? 'VERIFIED' : 'UNVERIFIED';
 
   if (session) {
     const defaultTimeoutSec = mediaType === 'image' ? 60 : 180;
@@ -196,17 +202,23 @@ export async function collectTaskEvidence(
         imageUrl: finalSnapshot.imageUrl,
       };
       const mediaUrl = finalSnapshot.videoUrl || finalSnapshot.imageUrl;
-      if (mediaUrl) {
+      if (mediaUrl && !artifactBuffer) {
+        // 工具亲自从任务自有快照 URL 下载字节 → 与该任务物理绑定, 归属可判 VERIFIED。
         mediaArtifactSource = 'TASK_SNAPSHOT';
         artifactOwnership = 'VERIFIED';
-        if (!artifactBuffer) {
-          const probeRes = await fetchFirst64K(mediaUrl);
-          if (probeRes) {
-            artifactBuffer = probeRes.buffer;
-            artifactTailBuffer = probeRes.tailBuffer;
-            probeDurationMs = probeRes.durationMs;
-          }
+        const probeRes = await fetchFirst64K(mediaUrl);
+        if (probeRes) {
+          artifactBuffer = probeRes.buffer;
+          artifactTailBuffer = probeRes.tailBuffer;
+          probeDurationMs = probeRes.durationMs;
         }
+      } else if (artifactBuffer) {
+        // fail-closed: operator 预置了 artifactBuffer/assetBuffer，这些字节未经工具从任务自有快照 URL 下载，
+        // 无法证明其确为该任务的真实产物（即便任务真成功，任意可解码字节也不得冒充 TASK_SNAPSHOT/VERIFIED
+        // 骗取 MEDIA_BINARY:CONTAINER_CHECK 的 PASS）。故不下载、不冒充，归属默认 UNVERIFIED，
+        // 仅当 operator 显式 artifactOwnership==='VERIFIED' 时才尊重其断言（与 :224 / :279-281 同一纪律）。
+        mediaArtifactSource = 'EXTERNAL_BUFFER';
+        artifactOwnership = options.artifactOwnership === 'VERIFIED' ? 'VERIFIED' : 'UNVERIFIED';
       }
     } else {
       terminalStatus = 'UNKNOWN';
@@ -288,10 +300,12 @@ export async function collectTaskEvidence(
         }
       }
     } else if (artifactBuffer) {
-      mediaArtifactSource =
-        options.artifactOwnership === 'UNVERIFIED' || options.artifactOwnership === 'UNBOUND'
-          ? 'EXTERNAL_BUFFER'
-          : 'FIXTURE_BUFFER';
+      // 纯离线/fixture 语义（无 session、无 URL、仅提供 buffer）：调用方提供的 buffer 即为待验产物，
+      // 归属 VERIFIED（by-design，fixture 自证）；显式声明 UNVERIFIED/UNBOUND 则视为外部字节、归属不可判。
+      // 显式置位以配合上方 fail-closed 默认（此前依赖 init 默认 VERIFIED，现默认已收敛为 UNVERIFIED）。
+      const isExternalBuffer = options.artifactOwnership === 'UNVERIFIED' || options.artifactOwnership === 'UNBOUND';
+      mediaArtifactSource = isExternalBuffer ? 'EXTERNAL_BUFFER' : 'FIXTURE_BUFFER';
+      artifactOwnership = isExternalBuffer ? 'UNVERIFIED' : 'VERIFIED';
     }
   }
 
@@ -451,7 +465,13 @@ export async function collectTaskEvidence(
       }
     }
     // 若产物 URL 可从数据库物理记录获取且尚未探测（媒体感知；图片相对路径缺域名时为 undefined，不抓取）
-    const dbMediaUrl = taskEvidence.videoUrl || resolveDbMediaUrl();
+    // fail-closed 归属：DATABASE_PHYSICAL_RECORD + VERIFIED 只能绑定 **DB 记录自有** 的产物 URL (resolveDbMediaUrl)，
+    // 绝不回退到 taskEvidence.videoUrl —— 离线分支 (:288) 会把 operator 传入的 options.videoUrl 写进该字段，
+    // 若用它下载并盖 DATABASE_PHYSICAL_RECORD/VERIFIED，即让 operator 的任意 URL 冒充任务物理产物 (provenance 谎报 +
+    // 归属 VERIFIED 非"挣得"，与 artifact-ownership fail-closed 同一纪律)。真实轮询成功路径的产物已在 :205-214
+    // 下载 (artifactBuffer 已置)，不经此路；dbTaskStatus===2 时 taskEvidence.videoUrl 亦已在 :453 被
+    // resolveDbMediaUrl() 覆盖为 DB 自有 URL，故此改对合法路径字节级零行为变化，仅堵 operator URL 泄漏进物理落库归属。
+    const dbMediaUrl = resolveDbMediaUrl();
     if (!artifactBuffer && dbMediaUrl) {
       mediaArtifactSource = dbSource;
       artifactOwnership = 'VERIFIED';
