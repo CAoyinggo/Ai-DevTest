@@ -56,6 +56,7 @@ export type { PlanKernelOptions };
 import {
   resolveVerifyContext,
   collectTaskEvidence,
+  applyDbAuthoritativeExpectedReprice,
   collectMediaEvidence,
   collectBillingEvidence,
   computeRegressionDiff,
@@ -98,7 +99,7 @@ export interface ProbeKernelResult {
   baseUrl: string;
   gatewayUrl: string;
   probedAt: string;
-  auth: { status: 'VALID' | 'EXPIRED' | 'MISSING'; details: string; hasSession: boolean };
+  auth: { status: 'VALID' | 'EXPIRED' | 'MISSING' | 'INDETERMINATE'; details: string; hasSession: boolean };
   endpoints: Array<{
     name: string;
     url: string;
@@ -107,7 +108,10 @@ export interface ProbeKernelResult {
     latencyMs?: number;
     message: string;
   }>;
-  candidateChannelCount: number;
+  // 真实探活(executeRealProbe)不测量渠道就绪度 → modelReadiness 缺省。此处绝不臆造一个"看着能过"的默认值
+  // (旧 `?? 2` 会让 R4 --enforce 的"渠道数 <=0 阻断"永远看到 2 而形同虚设)。未知即 undefined，如实上报，
+  // 交 evaluateProbeEnforcement 按 fail-closed 处理(未知→阻断)，绝不假绿。
+  candidateChannelCount?: number;
   recommendations: string[];
   domainAnalysis?: DomainProbeAnalysis;
   canonicalSpec?: CanonicalTestSpec;
@@ -128,6 +132,12 @@ export async function probe(options: ProbeKernelOptions = {}): Promise<ProbeKern
       baseUrl: options.baseUrl,
       gatewayUrl: options.gatewayUrl,
       sessionFile: options.sessionFile,
+      // 透传 modelId/mediaType → env-probe 才会真正计算 modelReadiness(含实测 candidateChannelCount)。
+      // 旧代码漏传这两参，导致本层 modelReadiness 恒 undefined、candidateChannelCount 只能靠 `?? 2` 臆造充数
+      // (真实/mock 都从不测量渠道)——那正是架空 R4 --enforce 渠道门的假绿根因。透传后：给了模型即得真实渠道数，
+      // 未给模型则如实保持 undefined(未测量)，两种情形都不再臆造。
+      modelId: options.modelId,
+      mediaType: options.mediaType,
       mock: options.mock ?? false,
       timeoutMs: options.timeoutMs ?? 5000,
     });
@@ -150,7 +160,8 @@ export async function probe(options: ProbeKernelOptions = {}): Promise<ProbeKern
       probedAt: r.probedAt,
       auth: r.auth,
       endpoints: r.endpoints,
-      candidateChannelCount: r.modelReadiness?.candidateChannelCount ?? 2,
+      // 真实路径 modelReadiness 缺省时保留 undefined(未测量)，绝不 `?? 2` 臆造 → 见接口字段注释与 R4 门禁。
+      candidateChannelCount: r.modelReadiness?.candidateChannelCount,
       recommendations: r.recommendations,
       domainAnalysis,
       canonicalSpec,
@@ -761,7 +772,7 @@ export async function plan(options: PlanKernelOptions): Promise<PlanKernelResult
       missingInputs,
       executable,
       blockerCode,
-    } as any,
+    } as unknown as PlanKernelResult,
     {
       testId: planTestId,
       requirement: options.requirement,
@@ -1386,12 +1397,14 @@ export async function executeCanonical(
         }
       }
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errObj = err as { message?: string } | null | undefined;
     const isVerdictViolation =
-      err?.message?.includes('ADAPTER_ILLEGAL_VERDICT_FIELD') || err?.message?.includes('FORBIDDEN_VERDICT_FIELDS');
+      errObj?.message?.includes('ADAPTER_ILLEGAL_VERDICT_FIELD') ||
+      errObj?.message?.includes('FORBIDDEN_VERDICT_FIELDS');
     const isAdapterOutputInvalid =
-      err?.message?.includes('BLOCKED_INVALID_ADAPTER_OUTPUT') ||
-      err?.message?.includes('validateExecutionResult') ||
+      errObj?.message?.includes('BLOCKED_INVALID_ADAPTER_OUTPUT') ||
+      errObj?.message?.includes('validateExecutionResult') ||
       isVerdictViolation;
     const errorCode = isAdapterOutputInvalid ? 'BLOCKED_INVALID_ADAPTER_OUTPUT' : 'ADAPTER_EXECUTION_ERROR';
     const rawMsg = err instanceof Error ? err.message : String(err);
@@ -1458,7 +1471,7 @@ export async function executeCanonical(
     mode,
     modelId: resolvedModelId,
     mediaType,
-    status: execRes.status === 'COMPLETED' ? 'SUCCESS' : (execRes.status as any),
+    status: execRes.status === 'COMPLETED' ? 'SUCCESS' : execRes.status,
     points,
     message: execRes.error?.message || (execRes.metadata?.message as string) || `任务执行完成 [${execRes.status}]`,
     disambiguation,
@@ -1586,6 +1599,8 @@ export async function execute(options: ExecuteKernelOptions): Promise<ExecuteKer
 export async function verify(options: VerifyKernelOptions): Promise<VerifyKernelResult> {
   const ctx = await resolveVerifyContext(options, options.contract);
   const taskResult = await collectTaskEvidence(ctx, options);
+  // R8: DB 物理取证后、账务核对前，用真实落库模型回算刊例期望（仅 operator 未声明 --model 的图片；fail-closed）
+  applyDbAuthoritativeExpectedReprice(ctx, options, taskResult);
   const mediaResult = collectMediaEvidence(taskResult, ctx);
   const billingResult = await collectBillingEvidence(ctx, taskResult, options);
   const regressionDiff = computeRegressionDiff(

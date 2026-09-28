@@ -33,7 +33,7 @@ export interface EntityCompositeState {
     mediaUrl?: string;
   };
   observedAt: number;
-  rawAttributes?: Record<string, any>;
+  rawAttributes?: Record<string, unknown>;
 }
 
 /**
@@ -83,7 +83,7 @@ export interface PanquActionDefinition {
   riskCategory: 'CRITICAL_FINANCIAL' | 'MEDIA_INTEGRITY' | 'ASYNC_CONSISTENCY' | 'READ_ONLY';
   baseRisk: number; // 0.0 ~ 1.0
   preconditions: Array<(state: EntityCompositeState) => boolean>;
-  payloadGenerator?: (state: EntityCompositeState) => Record<string, any>;
+  payloadGenerator?: (state: EntityCompositeState) => Record<string, unknown>;
   executionSupport?: ActionExecutionSupport;
 }
 
@@ -95,7 +95,7 @@ export interface StateTransitionRecord {
   fromKey: string;
   fromState: EntityCompositeState;
   actionType: PanquActionType;
-  actionPayload: Record<string, any>;
+  actionPayload: Record<string, unknown>;
   toKey: string;
   toState: EntityCompositeState;
   historyCount: number;
@@ -111,12 +111,12 @@ export interface ExecutionEvidence {
   evidenceId: string;
   timestamp: number;
   httpStatus?: number;
-  apiResponse?: any;
+  apiResponse?: unknown;
   taskSnapshot?: {
     taskId: string | number;
     status: string;
     progress?: number;
-    rawPayload?: any;
+    rawPayload?: unknown;
   };
   billingEvidence?: {
     recordCount: number;

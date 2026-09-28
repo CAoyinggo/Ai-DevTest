@@ -17,7 +17,7 @@
 
 export interface ProbeEnforcementFacts {
   status?: 'HEALTHY' | 'DEGRADED' | 'BLOCKED';
-  auth?: { status?: 'VALID' | 'EXPIRED' | 'MISSING' };
+  auth?: { status?: 'VALID' | 'EXPIRED' | 'MISSING' | 'INDETERMINATE' };
   candidateChannelCount?: number;
   endpoints?: Array<{ name?: string; reachable?: boolean }>;
 }
@@ -53,9 +53,13 @@ export function evaluateProbeEnforcement(
     violations.push(`鉴权凭据非 VALID (当前: ${authStatus}) — 真实测试无法通过网关鉴权，强制门禁阻断`);
   }
 
-  // 2) 候选渠道数必须 > 0 —— 为 0 表示无任何可分流渠道，真实派发必然失败。
-  const channels = facts?.candidateChannelCount ?? 0;
-  if (channels <= 0) {
+  // 2) 候选渠道数：已知为 0 → 无可分流渠道，真实派发必然失败；未知(真实探活未测量渠道就绪度) →
+  //    fail-closed 同样阻断（--enforce 为 opt-in 严格门，缺省按最不利处理），但如实区分"未知"与"确为 0"，
+  //    绝不把未知当作"有渠道"放行(那正是 core-kernel 旧 `?? 2` 造出的假绿)。
+  const channels = facts?.candidateChannelCount;
+  if (channels === undefined) {
+    violations.push('候选渠道就绪度未知（真实探活未测量渠道数）— 无法证明存在可承接渠道，强制门禁 fail-closed 阻断');
+  } else if (channels <= 0) {
     violations.push(`可用渠道数为 ${channels} — 无候选分流渠道，真实派发必然失败，强制门禁阻断`);
   }
 

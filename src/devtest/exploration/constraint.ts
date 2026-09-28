@@ -12,7 +12,7 @@ export interface ConstraintEvaluationResult {
   stateFeasible: boolean;
   payloadValid: boolean;
   violations: string[];
-  inferredBounds?: Record<string, any>;
+  inferredBounds?: Record<string, unknown>;
 }
 
 export class PanquConstraintEvaluator {
@@ -27,11 +27,11 @@ export class PanquConstraintEvaluator {
   public evaluate(
     action: PanquActionDefinition,
     state: EntityCompositeState,
-    payload: Record<string, any> = {},
+    payload: Record<string, unknown> = {},
   ): ConstraintEvaluationResult {
     const stateViolations: string[] = [];
     const payloadViolations: string[] = [];
-    const inferredBounds: Record<string, any> = {};
+    const inferredBounds: Record<string, unknown> = {};
 
     // 1. 前置谓词校验 (状态维度)
     for (let i = 0; i < action.preconditions.length; i++) {
@@ -93,9 +93,9 @@ export class PanquConstraintEvaluator {
    */
   private checkParameterBounds(
     type: PanquActionType,
-    payload: Record<string, any>,
+    payload: Record<string, unknown>,
     violations: string[],
-    inferredBounds: Record<string, any>,
+    inferredBounds: Record<string, unknown>,
   ): void {
     if (type === 'SUBMIT_TASK') {
       // 视频时长边界 [1, 60] 秒
@@ -109,7 +109,7 @@ export class PanquConstraintEvaluator {
       // 模型 ID 必须在支持的模型清单中
       const supportedModels = [84, 88, 15, 201, 205];
       const modelId = payload.modelId ?? 84;
-      if (!supportedModels.includes(modelId)) {
+      if (!supportedModels.includes(modelId as number)) {
         violations.push(`UNSUPPORTED_MODEL: 不支持的模型 ID [${modelId}]`);
       }
     }

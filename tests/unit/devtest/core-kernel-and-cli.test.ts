@@ -20,13 +20,22 @@ afterEach(() => {
 describe('DevTest 纯净内核层 (Core Kernel)', () => {
   describe('1. probe (环境探活)', () => {
     it('支持受控 mock 探活，返回健康状态与可用渠道', async () => {
-      const res = await probe({ mock: true, env: 'test' });
+      // 指定模型 → mock 真正计算 modelReadiness，candidateChannelCount 为"真实算得"的渠道数(>0)，
+      // 而非旧 `?? 2` 臆造值(那会让"未测量渠道"伪装成有 2 条可用渠道并架空 R4 --enforce 渠道门)。
+      const res = await probe({ mock: true, env: 'test', modelId: 84, mediaType: 'video' });
       expect(res.ok).toBe(true);
       expect(res.env).toBe('test');
       expect(res.status).toBe('HEALTHY');
       expect(res.auth.status).toBe('MISSING');
       expect(res.candidateChannelCount).toBeGreaterThan(0);
       expect(res.endpoints.length).toBeGreaterThan(0);
+    });
+
+    it('mock 探活未指定模型 → candidateChannelCount 为 undefined(未测量渠道就绪度)，绝不臆造 2(反 `?? 2` 假绿)', async () => {
+      const res = await probe({ mock: true, env: 'test' });
+      expect(res.ok).toBe(true);
+      // 无模型即无从计算渠道就绪度：如实 undefined，不得被默认成一个"看着能过"的正数
+      expect(res.candidateChannelCount).toBeUndefined();
     });
 
     it('真实探活在目标地址不可达时安全返回阻断或降级报告', async () => {

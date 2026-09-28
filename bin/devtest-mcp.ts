@@ -86,8 +86,14 @@ export async function processMcpRequest(
       };
     }
     const result = await service.call({ ...args, action });
-    const reportText = (result as any)?.report || (result as any)?.summary || JSON.stringify(result, null, 2);
-    const isError = Boolean((result as any)?.isError ?? (result.ok === false && !(result as any)?.status));
+    const resultView = result as {
+      report?: string;
+      summary?: string;
+      isError?: boolean;
+      status?: unknown;
+    };
+    const reportText = resultView.report || resultView.summary || JSON.stringify(result, null, 2);
+    const isError = Boolean(resultView.isError ?? (result.ok === false && !resultView.status));
     return {
       jsonrpc: '2.0',
       id: request.id,

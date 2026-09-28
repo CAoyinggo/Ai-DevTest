@@ -25,7 +25,7 @@ export interface UnverifiedFrontier {
   proposedScenario: Array<{
     action: PanquActionType;
     description: string;
-    payload: Record<string, any>;
+    payload: Record<string, unknown>;
   }>;
 }
 
@@ -60,7 +60,7 @@ export class PanquStateGraph {
   public observeTransition(
     fromState: EntityCompositeState,
     actionType: PanquActionType,
-    actionPayload: Record<string, any>,
+    actionPayload: Record<string, unknown>,
     toState: EntityCompositeState,
     invariantsChecked: string[] = [],
   ): StateTransitionRecord {
@@ -222,8 +222,8 @@ export class PanquStateGraph {
   private buildScenarioForFrontier(
     targetState: EntityCompositeState,
     candidateAction: PanquActionDefinition,
-  ): Array<{ action: PanquActionType; description: string; payload: Record<string, any> }> {
-    const steps: Array<{ action: PanquActionType; description: string; payload: Record<string, any> }> = [];
+  ): Array<{ action: PanquActionType; description: string; payload: Record<string, unknown> }> {
+    const steps: Array<{ action: PanquActionType; description: string; payload: Record<string, unknown> }> = [];
 
     // 1. 若前置需要认证
     if (targetState.session.status === 'ANONYMOUS') {

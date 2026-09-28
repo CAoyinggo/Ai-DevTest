@@ -14,6 +14,7 @@ import type {
   ExecuteKernelResult,
   VerifyKernelResult,
 } from '../../../src/devtest/core-kernel.js';
+import { evaluateRequiredEvidence, type CanonicalTestSpec } from '../../../src/devtest/canonical-protocol.js';
 
 // 深度冻结辅助工具 (用于反证测试: 保证旧对象不可变)
 function deepFreeze<T>(obj: T): T {
@@ -201,6 +202,8 @@ describe('Legacy Protocol Mappers (Phase 1.3 & 1.3B)', () => {
         ok: false,
         passed: false,
         taskId: 88890,
+        // 定价已确定契约：使 billing.passed=false 诚实落 FAIL（而非缺 contract 被 UNVERIFIED 掩盖）
+        contract: { pricing: { allowPass: true } } as any,
         modelId: 84,
         mediaType: 'video',
         status: 'FAILED',
@@ -214,6 +217,7 @@ describe('Legacy Protocol Mappers (Phase 1.3 & 1.3B)', () => {
         reasons: ['任务处理超时失败', '视频花屏解码损坏', '账单少退积分'],
         evidence: {
           task: { status: 'FAILED', source: 'SERVER_API (/aivideo/v2/task_status/apiGetStatus)' },
+          media: { ownership: 'VERIFIED' }, // 归属已绑定：本例隔离"解码失败→FAIL"，而非归属缺失
         } as any,
         artifact: {
           decodable: false, // 业务解码失败
@@ -831,9 +835,65 @@ describe('Legacy Protocol Mappers (Phase 1.3 & 1.3B)', () => {
       expect(staticEnv!.normalizedFields.assertionMatched).toBe(false);
     });
 
+    // --- 6.3 纵深回归锁：真实渠道证据「静默 / 显式兜底」两个 fail-closed 边界 ---
+    // 守卫源: legacy-protocol-mappers.ts ~1438『fallbackAvoided = detail?.fallbackAvoided !== false』
+    // 该缺省(undefined→"已避免回退")只可避免"假 FAIL"，绝不可制造"假 PASS"——PASS 必须由
+    // channelStatus==='PASS' 或 channelMatched===true 显式正信号背书；否则一律 UNVERIFIED。
+    it('6.3-adv-A 静默 channelDetail(无 channelStatus/channelMatched/fallbackAvoided)→ UNVERIFIED，绝不因缺省 fallbackAvoided 或 id 相等臆造 PASS', () => {
+      const verifySilent: VerifyKernelResult = {
+        ...baseVerify,
+        provenance: { actualChannelId: 'SERVER_RUN_FACT:retrylog', fallbackChannel: '', retryProvider: '', extra: '' },
+        // 关键: 只给 id(且 actual===target)，不给 channelMatched / channelStatus / fallbackAvoided —— 全 undefined。
+        // 映射器绝不能从 id 相等私自推断"匹配"，也不能因 fallbackAvoided 缺省当"渠道正确"而盖 PASS。
+        channelDetail: {
+          actualChannelId: 7,
+          targetChannelId: 7,
+          isGatewayChannelVerified: true,
+        } as any,
+      };
+
+      const res = mapVerifyToCanonicalEvidence(verifySilent, { testId: 'v-ch-silent', capturedAt: FIXED_TIME });
+      expect(res.success).toBe(true);
+
+      const channelEnv = res.value!.find((e) => e.evidenceKey === 'SERVER_API:ROUTING_CHANNEL');
+      expect(channelEnv).toBeDefined();
+      expect(channelEnv!.sourceType).toBe('SERVER_API'); // 仍是真实来源信封
+      expect(channelEnv!.observationStatus).toBe('UNVERIFIED'); // 但无正信号 → 未决，绝不 PASS
+      expect(channelEnv!.observationStatus).not.toBe('PASS');
+      expect(channelEnv!.normalizedFields.observedStatus).toBe('UNVERIFIED');
+      expect(channelEnv!.normalizedFields.assertionMatched).toBe(false);
+    });
+
+    it('6.3-adv-B fallbackAvoided === false(显式发生兜底回退)即便 channelMatched=true 也判 FAIL，严禁 PASS', () => {
+      const verifyFallback: VerifyKernelResult = {
+        ...baseVerify,
+        provenance: { actualChannelId: 'SERVER_RUN_FACT:retrylog', fallbackChannel: '', retryProvider: '', extra: '' },
+        // 显式回退发生: isFallback=true 应优先判 FAIL，压过 channelMatched===true 这个正信号。
+        channelDetail: {
+          actualChannelId: 2,
+          targetChannelId: 2,
+          channelMatched: true,
+          fallbackAvoided: false,
+          isGatewayChannelVerified: true,
+        } as any,
+      };
+
+      const res = mapVerifyToCanonicalEvidence(verifyFallback, { testId: 'v-ch-fallback', capturedAt: FIXED_TIME });
+      expect(res.success).toBe(true);
+
+      const channelEnv = res.value!.find((e) => e.evidenceKey === 'SERVER_API:ROUTING_CHANNEL');
+      expect(channelEnv).toBeDefined();
+      expect(channelEnv!.observationStatus).toBe('FAIL'); // 兜底回退 = 未打到目标渠道 → FAIL
+      expect(channelEnv!.observationStatus).not.toBe('PASS');
+      expect(channelEnv!.normalizedFields.assertionMatched).toBe(false);
+    });
+
     it('6.4 媒体二进制、账单流水的 evidenceKey 和 observationStatus 正确映射', () => {
       const verifyWithArtifactAndBilling: VerifyKernelResult = {
         ...baseVerify,
+        // billing PASS 必须由"定价已确定"背书：显式给出 allowPass=true 的 contract，使 BILLING_LEDGER PASS
+        // 是真值而非旧 `pricingAllowPass !== false` 把 undefined 当已确定的假绿（真实 verify 恒有 boolean allowPass）。
+        contract: { pricing: { allowPass: true } } as any,
         artifact: {
           decodable: true,
           fileAccessible: true,
@@ -848,6 +908,7 @@ describe('Legacy Protocol Mappers (Phase 1.3 & 1.3B)', () => {
         } as any,
         evidence: {
           billing: { expectedChargeSource: 'REAL_BILLING_FACT' },
+          media: { ownership: 'VERIFIED' }, // 归属已验真 → 可解码产物合法映射 PASS
         } as any,
       };
 
@@ -872,6 +933,8 @@ describe('Legacy Protocol Mappers (Phase 1.3 & 1.3B)', () => {
       // 反证：媒体不可解码或账单未通过时，映射为 FAIL
       const verifyWithFails: VerifyKernelResult = {
         ...baseVerify,
+        // 同样声明定价已确定 → billing.passed=false 才能诚实落 FAIL（而非因缺 contract 被 UNVERIFIED 掩盖）
+        contract: { pricing: { allowPass: true } } as any,
         artifact: {
           decodable: false,
           fileAccessible: true,
@@ -882,6 +945,7 @@ describe('Legacy Protocol Mappers (Phase 1.3 & 1.3B)', () => {
           settledPoints: 100,
           netDeductedPoints: 100,
         } as any,
+        evidence: { media: { ownership: 'VERIFIED' } } as any, // 归属已验真 → 隔离"解码失败→FAIL"
       };
 
       const resFails = mapVerifyToCanonicalEvidence(verifyWithFails, { testId: 'v-fails', capturedAt: FIXED_TIME });
@@ -912,6 +976,30 @@ describe('Legacy Protocol Mappers (Phase 1.3 & 1.3B)', () => {
       const missingBilling = resMissing.value!.find((e) => e.evidenceKey === 'BILLING_LEDGER:TASK_RECORDS');
       expect(missingBilling?.collectionStatus).toBe('MISSING');
       expect(missingBilling?.observationStatus).toBe('UNVERIFIED');
+
+      // 反证（钉死定价确定性门）：账单流水齐全(非 SKIPPED)、billing.passed=true，但**未提供定价确定契约**
+      // (contract 缺失 → pricingAllowPass=undefined)。绝不因"没说未确定"就当已确定 → 必 UNVERIFIED，非 PASS。
+      // 堵住 `pricingAllowPass !== false` 把 undefined 当已确定的假绿（现为 `=== true`）。
+      const verifyBillingNoContract: VerifyKernelResult = {
+        ...baseVerify,
+        contract: undefined as any,
+        billing: {
+          passed: true,
+          preDeductedPoints: 50,
+          settledPoints: 50,
+          netDeductedPoints: 50,
+          source: 'DATABASE_PHYSICAL_RECORD',
+        } as any,
+        billingAudit: 'AUDITED',
+      };
+      const resNoContract = mapVerifyToCanonicalEvidence(verifyBillingNoContract, {
+        testId: 'v-bill-nocontract',
+        capturedAt: FIXED_TIME,
+      });
+      expect(resNoContract.success).toBe(true);
+      const noContractBilling = resNoContract.value!.find((e) => e.evidenceKey === 'BILLING_LEDGER:TASK_RECORDS');
+      expect(noContractBilling?.collectionStatus).toBe('SUCCESS'); // 流水已采集
+      expect(noContractBilling?.observationStatus).toBe('UNVERIFIED'); // 但定价未证确定 → 不得 PASS
     });
   });
 
@@ -991,6 +1079,70 @@ describe('Legacy Protocol Mappers (Phase 1.3 & 1.3B)', () => {
   });
 
   // ==========================================================================
+  // 7B. 任务终态证据来源防伪 (Operator-Declared vs Server-Polled Provenance)
+  //     operator 经 --terminal-status 显式声明的终态属「操作者断言」(source==='provided')，
+  //     绝不得在 REAL 模式冒充可信 SERVER_API 证据去满足 SERVER_API:TASK_STATUS 必需证据
+  //     (否则仅凭 --terminal-status SUCCESS 声明即可自证任务成功 → 假 PASS)。
+  //     evidence-collectors.ts:539 已对「executionMode='real' 但无有效会话」抛 EVIDENCE_CONFLICT 兜底(fail-closed)；
+  //     本节锁定**第二道独立防线**: 即便兜底守卫缺席, provided 证据也必被降级 USER_ASSERTION 而无法满足服务端必需证据。
+  // ==========================================================================
+  describe('7B. 任务终态证据来源防伪 (provided 降级 USER_ASSERTION, 绝不冒充 SERVER_API)', () => {
+    const REAL_SPEC = {
+      testId: 'v-task-provenance',
+      executionMode: 'REAL',
+      requiredEvidence: ['SERVER_API:TASK_STATUS'],
+    } as unknown as CanonicalTestSpec;
+
+    it('7B.1 REAL + operator 声明终态 (source=provided, SUCCESS) → 降级 USER_ASSERTION:TASK_STATUS, 绝不生成 SERVER_API:TASK_STATUS', () => {
+      const facts: CanonicalVerifyFacts = {
+        testId: 'v-task-provenance',
+        capturedAt: FIXED_TIME,
+        executionMode: 'real',
+        taskId: 700001,
+        task: { status: 'PASS', source: 'provided', terminalStatus: 'SUCCESS' } as any,
+      };
+      const res = buildCanonicalEvidenceFromVerifyFacts(facts);
+      expect(res.success).toBe(true);
+      expect(res.value!.some((e) => e.evidenceKey === 'SERVER_API:TASK_STATUS')).toBe(false);
+      const task = res.value!.find((e) => e.evidenceKey === 'USER_ASSERTION:TASK_STATUS');
+      expect(task).toBeDefined();
+      expect(task?.sourceType).toBe('USER_ASSERTION');
+      expect(task?.provenance).toContain('USER_ASSERTION');
+      expect(task?.provenance).not.toContain('SERVER_API');
+    });
+
+    it('7B.2 第二道独立防线: operator 声明的 USER_ASSERTION:TASK_STATUS 无法满足 REAL 规范要求的 SERVER_API:TASK_STATUS (fail-closed → missing)', () => {
+      const facts: CanonicalVerifyFacts = {
+        testId: 'v-task-provenance',
+        capturedAt: FIXED_TIME,
+        executionMode: 'real',
+        taskId: 700002,
+        task: { status: 'PASS', source: 'provided', terminalStatus: 'SUCCESS' } as any,
+      };
+      const res = buildCanonicalEvidenceFromVerifyFacts(facts);
+      const evalRes = evaluateRequiredEvidence(REAL_SPEC, res.value!);
+      expect(evalRes.missingEvidenceKeys).toContain('SERVER_API:TASK_STATUS');
+      expect(evalRes.matchedEnvelopes['SERVER_API:TASK_STATUS']).toBeUndefined();
+    });
+    it('7B.3 行为不变量: 真实主站轮询 (source=live_polling, SUCCESS) 仍如实生成 SERVER_API:TASK_STATUS 并满足必需证据 (绝不误伤真绿)', () => {
+      const facts: CanonicalVerifyFacts = {
+        testId: 'v-task-provenance',
+        capturedAt: FIXED_TIME,
+        executionMode: 'real',
+        taskId: 700003,
+        task: { status: 'PASS', source: 'live_polling', terminalStatus: 'SUCCESS', taskStatus: 2 } as any,
+      };
+      const res = buildCanonicalEvidenceFromVerifyFacts(facts);
+      const task = res.value!.find((e) => e.evidenceKey === 'SERVER_API:TASK_STATUS');
+      expect(task).toBeDefined();
+      expect(task?.sourceType).toBe('SERVER_API');
+      expect(task?.observationStatus).toBe('PASS');
+      const evalRes = evaluateRequiredEvidence(REAL_SPEC, res.value!);
+      expect(evalRes.missingEvidenceKeys).not.toContain('SERVER_API:TASK_STATUS');
+    });
+  });
+
+  // ==========================================================================
   // 8. 业务校验缺省 fail-closed
   //    businessValidationStatus 未提供时: 信封判 UNVERIFIED(结论未决), 绝不缺省 PASS。
   //    这是"伪绿态"防线的一环: 缺失的前置校验不得被静默当作通过。
@@ -1039,6 +1191,9 @@ describe('Legacy Protocol Mappers (Phase 1.3 & 1.3B)', () => {
       capturedAt: FIXED_TIME,
       executionMode: 'real',
       taskId: 240010,
+      // 真实计费流水的 provenance 测试默认定价已确定（live 恒有 boolean allowPass）→ 显式声明，
+      // 使这些 PASS 断言真值化，而非依赖旧 `pricingAllowPass !== false` 把 undefined 当已确定。
+      pricingAllowPass: true,
     };
     const KEY = 'BILLING_LEDGER:TASK_RECORDS';
 
@@ -1082,6 +1237,125 @@ describe('Legacy Protocol Mappers (Phase 1.3 & 1.3B)', () => {
       });
       const bill = res.value!.find((e) => e.evidenceKey === KEY);
       expect(bill?.provenance).toBe('BILLING_LEDGER (GET /auth/adminscore/index)');
+    });
+  });
+
+  // ==========================================================================
+  // 10. 媒体归属 fail-closed（有产物但无归属证据 → 绝不映射 MEDIA_BINARY 假 PASS）
+  //     旧逻辑 `artifactOwnership !== 'UNVERIFIED'` 把 ownership=undefined 当作已验真，
+  //     导致"有可解码产物但从未与任务归属绑定"被误盖 PASS。改 `=== 'VERIFIED'` fail-closed 后：
+  //     归属缺失/未知/自相矛盾一律 UNVERIFIED；仅显式 VERIFIED 才允许 PASS/FAIL 结论。
+  //     真实流水线 ownership 恒有值 (VERIFIED|UNVERIFIED)，此契约只收敛桥接层/部分构造入参的失效开口。
+  // ==========================================================================
+  describe('10. 媒体归属 fail-closed (无归属证据不得假 PASS)', () => {
+    const KEY = 'MEDIA_BINARY:CONTAINER_CHECK';
+    const artBase: CanonicalVerifyFacts = {
+      testId: 'v-ownership-failclosed',
+      capturedAt: FIXED_TIME,
+      executionMode: 'real',
+      taskId: 240020,
+    };
+
+    it('10.1 可解码 + 文件可访问 + 无任何归属证据 (ownership undefined) → UNVERIFIED, 绝不 PASS (核心漏洞守卫)', () => {
+      const res = buildCanonicalEvidenceFromVerifyFacts({
+        ...artBase,
+        artifact: { decodable: true, fileAccessible: true },
+        // 故意不给 artifactOwnership / artifact.ownership
+      });
+      const media = res.value!.find((e) => e.evidenceKey === KEY);
+      expect(media).toBeDefined();
+      expect(media!.observationStatus).toBe('UNVERIFIED');
+      expect(media!.normalizedFields.assertionMatched).toBe(false);
+    });
+
+    it('10.2 可解码 + 归属显式 VERIFIED → PASS (fail-closed 不误伤真实归属)', () => {
+      const res = buildCanonicalEvidenceFromVerifyFacts({
+        ...artBase,
+        artifact: { decodable: true, fileAccessible: true, ownership: 'VERIFIED' },
+        artifactOwnership: 'VERIFIED',
+      });
+      const media = res.value!.find((e) => e.evidenceKey === KEY);
+      expect(media!.observationStatus).toBe('PASS');
+    });
+
+    it('10.3 归属显式 UNVERIFIED → UNVERIFIED (即便产物可解码)', () => {
+      const res = buildCanonicalEvidenceFromVerifyFacts({
+        ...artBase,
+        artifact: { decodable: true, fileAccessible: true, ownership: 'UNVERIFIED' },
+        artifactOwnership: 'UNVERIFIED',
+      });
+      const media = res.value!.find((e) => e.evidenceKey === KEY);
+      expect(media!.observationStatus).toBe('UNVERIFIED');
+    });
+
+    it('10.4 顶层 VERIFIED 但 artifact.ownership 自相矛盾为 UNVERIFIED → fail-closed UNVERIFIED', () => {
+      const res = buildCanonicalEvidenceFromVerifyFacts({
+        ...artBase,
+        artifact: { decodable: true, fileAccessible: true, ownership: 'UNVERIFIED' },
+        artifactOwnership: 'VERIFIED',
+      });
+      const media = res.value!.find((e) => e.evidenceKey === KEY);
+      expect(media!.observationStatus).toBe('UNVERIFIED');
+    });
+
+    it('10.5 归属 VERIFIED 但不可解码 → FAIL (归属确认后解码失败才归因 FAIL)', () => {
+      const res = buildCanonicalEvidenceFromVerifyFacts({
+        ...artBase,
+        artifact: { decodable: false, fileAccessible: true, ownership: 'VERIFIED' },
+        artifactOwnership: 'VERIFIED',
+      });
+      const media = res.value!.find((e) => e.evidenceKey === KEY);
+      expect(media!.observationStatus).toBe('FAIL');
+    });
+  });
+
+  // ==========================================================================
+  // 11. 回归比对信封三态 fail-closed (REGRESSION_BASELINE)
+  //     regressionStatus 三态: REGRESSION→FAIL; CLEAN→PASS; UNKNOWN(基线比对证据不全)→UNVERIFIED。
+  //     绝不把"无法确定无回归"静默判为 observationStatus=PASS 去满足 REGRESSION_BASELINE 必需证据 (零假 PASS)。
+  //     与 DiffItem 的 UNKNOWN→BLOCKED 及信封自身 assertionMatched=false 保持一致。
+  // ==========================================================================
+  describe('11. 回归比对信封三态 (REGRESSION_BASELINE fail-closed)', () => {
+    const regBase: CanonicalVerifyFacts = {
+      testId: 'v-regression-tri',
+      capturedAt: FIXED_TIME,
+      executionMode: 'real',
+      taskId: 240099,
+    };
+    const KEY = 'SERVER_API:REGRESSION_BASELINE';
+    const mkDiff = (
+      regressionStatus: 'CLEAN' | 'REGRESSION' | 'UNKNOWN',
+      isRegression: boolean,
+    ): NonNullable<CanonicalVerifyFacts['regressionDiff']> => ({
+      isRegression,
+      regressionStatus,
+      unexpectedChanges: isRegression ? [{ field: 'billing.actualCharge', reason: '扣费漂移' }] : [],
+    });
+
+    it('11.1 CLEAN → observationStatus=PASS 且 assertionMatched=true', () => {
+      const res = buildCanonicalEvidenceFromVerifyFacts({ ...regBase, regressionDiff: mkDiff('CLEAN', false) });
+      const reg = res.value!.find((e) => e.evidenceKey === KEY);
+      expect(reg).toBeDefined();
+      expect(reg!.observationStatus).toBe('PASS');
+      expect(reg!.normalizedFields?.assertionMatched).toBe(true);
+    });
+
+    it('11.2 REGRESSION → observationStatus=FAIL', () => {
+      const res = buildCanonicalEvidenceFromVerifyFacts({ ...regBase, regressionDiff: mkDiff('REGRESSION', true) });
+      const reg = res.value!.find((e) => e.evidenceKey === KEY);
+      expect(reg!.observationStatus).toBe('FAIL');
+      expect(reg!.normalizedFields?.assertionMatched).toBe(false);
+    });
+
+    it('11.3 UNKNOWN(证据不全) → observationStatus=UNVERIFIED，绝不静默判 PASS 满足必需证据', () => {
+      const res = buildCanonicalEvidenceFromVerifyFacts({ ...regBase, regressionDiff: mkDiff('UNKNOWN', false) });
+      const reg = res.value!.find((e) => e.evidenceKey === KEY);
+      expect(reg).toBeDefined();
+      // 核心反证: 修复前此处为 'PASS' (isRegression=false 即判 PASS)，会伪满足 REGRESSION_BASELINE 必需证据
+      expect(reg!.observationStatus).toBe('UNVERIFIED');
+      expect(reg!.normalizedFields?.assertionMatched).toBe(false);
+      expect(reg!.normalizedFields?.actualValue).toBe('UNKNOWN');
+      expect(reg!.normalizedFields?.observedStatus).toBe('UNVERIFIED');
     });
   });
 });

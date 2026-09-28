@@ -19,7 +19,7 @@ export type MutationType = 'BOUNDARY' | 'TEMPORAL' | 'RACE' | 'RETRY' | 'TIMING'
 export interface MutationStep {
   action: PanquActionType;
   description: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
   delayMs?: number; // Timing 变异中的显式时间窗口 (毫秒)
   concurrentGroup?: string; // Race 变异中的并发竞争分组标记
 }

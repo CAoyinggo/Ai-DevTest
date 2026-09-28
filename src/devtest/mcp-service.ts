@@ -4,13 +4,14 @@
  */
 import { probe, plan, execute, verify, type VerifyKernelResult } from './core-kernel.js';
 import { parseChangeIntent } from './env-probe.js';
-import type { DiversionBaseline, MemoryCandidatePayload, RecordCandidateResult } from './types.js';
+import type { DiversionBaseline, MemoryCandidatePayload, RecordCandidateResult, Experience } from './types.js';
 import {
   recordCandidateToSharedMemory,
   promoteConfirmedExperiences,
   type PromotionReport,
 } from './domain-knowledge.js';
 import { PanquMediaExecutionAdapter, type ExecutionAdapter } from './execution-ports.js';
+import type { SideEffectPolicy, TestCostLimit } from './canonical-protocol.js';
 
 /**
  * 单一兼容投影器 (Single Compatibility Projector)
@@ -228,7 +229,7 @@ export const DEVTEST_RECORD_CANDIDATE_TOOL = {
   },
 };
 
-export interface McpCallResult<T = any> {
+export interface McpCallResult<T = unknown> {
   ok: boolean;
   isError?: boolean;
   passed?: boolean;
@@ -333,7 +334,7 @@ export class DevTestMcpService {
             args.media_type || args.mediaType
               ? (((args.media_type || args.mediaType) as string).toLowerCase() as 'video' | 'image')
               : undefined,
-          extraExperiences: (args.extra_experiences || args.extraExperiences) as any,
+          extraExperiences: (args.extra_experiences || args.extraExperiences) as Experience[] | undefined,
           projectRoot:
             typeof args.project_root === 'string'
               ? args.project_root
@@ -344,7 +345,7 @@ export class DevTestMcpService {
         const domainStr = res.domainAnalysis?.identifiedObjects
           ? `\n- **领域对象**: ${res.domainAnalysis.identifiedObjects.map((o) => o.name).join(', ')}`
           : '';
-        const summary = `### 📋 Panqu 环境探活回执\n- **环境**: ${res.env} | **状态**: ${res.status}\n- **主站**: ${res.baseUrl}\n- **网关**: ${res.gatewayUrl}\n- **可用渠道数**: ${res.candidateChannelCount}\n- **鉴权凭据**: ${res.auth.status} (${res.auth.details})${domainStr}`;
+        const summary = `### 📋 Panqu 环境探活回执\n- **环境**: ${res.env} | **状态**: ${res.status}\n- **主站**: ${res.baseUrl}\n- **网关**: ${res.gatewayUrl}\n- **可用渠道数**: ${res.candidateChannelCount ?? '未知（真实探活未测量渠道就绪度，非 0）'}\n- **鉴权凭据**: ${res.auth.status} (${res.auth.details})${domainStr}`;
         const proj = projectOperationToCompatibility('probe', res.status);
         return {
           ok: true,
@@ -417,7 +418,7 @@ export class DevTestMcpService {
               : typeof args.flowType === 'string'
                 ? args.flowType
                 : undefined,
-          changeType: (args.change_type || args.changeType) as any,
+          changeType: (args.change_type || args.changeType) as 'new_model' | 'diversion_change' | undefined,
           requirement,
           resolution: typeof args.resolution === 'string' ? args.resolution : undefined,
           duration: typeof args.duration === 'number' ? args.duration : undefined,
@@ -452,7 +453,7 @@ export class DevTestMcpService {
           targetKind,
           projectId,
           rawTarget,
-          extraExperiences: (args.extra_experiences || args.extraExperiences) as any,
+          extraExperiences: (args.extra_experiences || args.extraExperiences) as Experience[] | undefined,
           projectRoot:
             typeof args.project_root === 'string'
               ? args.project_root
@@ -585,7 +586,7 @@ export class DevTestMcpService {
         const gatewayChannelConfirmed = rawGwChannel !== undefined ? Boolean(rawGwChannel) : undefined;
 
         const executionAdapter =
-          ((args.execution_adapter || args.executionAdapter) as any) ||
+          ((args.execution_adapter || args.executionAdapter) as ExecutionAdapter | undefined) ||
           this.defaultExecutionAdapter ||
           new PanquMediaExecutionAdapter({
             sessionFile,
@@ -613,8 +614,8 @@ export class DevTestMcpService {
           rawTarget,
           requirement,
           executionAdapter,
-          sideEffectPolicy: (args.side_effect_policy || args.sideEffectPolicy) as any,
-          costLimit: (args.cost_limit || args.costLimit) as any,
+          sideEffectPolicy: (args.side_effect_policy || args.sideEffectPolicy) as SideEffectPolicy | undefined,
+          costLimit: (args.cost_limit || args.costLimit) as TestCostLimit | undefined,
           allowSubmit: Boolean(args.allow_submit ?? args.allowSubmit),
           allowPaid: Boolean(args.allow_paid ?? args.allowPaid),
           maxCostPoints:
@@ -645,7 +646,7 @@ export class DevTestMcpService {
             acceptance: proj.acceptance,
             summary,
             data: res as unknown as T,
-            blockerCode: (res as any).blockerCode,
+            blockerCode: res.blockerCode,
             ...(res.ok ? {} : { error: res.message }),
           };
         }
@@ -667,7 +668,7 @@ export class DevTestMcpService {
             acceptance: proj.acceptance,
             summary,
             data: res as unknown as T,
-            blockerCode: (res as any).blockerCode,
+            blockerCode: res.blockerCode,
             error: res.message,
           };
         }
@@ -908,7 +909,7 @@ ${verifyRes.reasons.length > 0 ? `- **核验明细**: ${verifyRes.reasons.join('
                 : undefined,
           baseline: args.baseline as DiversionBaseline | undefined,
           unconfirmedStatic: Boolean(args.unconfirmed_static ?? args.unconfirmedStatic),
-          apiResult: (args.api_result || args.apiResult) as any,
+          apiResult: (args.api_result || args.apiResult) as { ok: boolean; code?: number; message?: string } | undefined,
           folderId: typeof args.folder_id === 'number' ? args.folder_id : undefined,
           isFolderInProject: typeof args.is_folder_in_project === 'boolean' ? args.is_folder_in_project : undefined,
         });

@@ -65,7 +65,8 @@ export function extractLearningExperiences(
       invariantsList.push(...runResult.observedTransition.invariantsChecked);
     }
     // 从 businessValidation.failedInvariants 提取
-    const bvFailedInvariants = (runResult.verifyResult?.businessValidation as any)?.failedInvariants;
+    const bvFailedInvariants = (runResult.verifyResult?.businessValidation as { failedInvariants?: unknown } | undefined)
+      ?.failedInvariants;
     if (Array.isArray(bvFailedInvariants)) {
       invariantsList.push(...bvFailedInvariants);
     }

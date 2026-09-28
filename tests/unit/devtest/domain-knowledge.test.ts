@@ -210,6 +210,33 @@ describe('DevTest 企业领域认知层 (Company Domain Knowledge)', () => {
       expect(res.reasons.some((r) => r.includes('FP-003') && r.includes('不属于当前 projectId'))).toBe(true);
     });
 
+    it('[真实问题 3 fail-closed] 指定 folderId 但 isFolderInProject 未提供 (归属未证) → 绝不静默 PASS，判 UNVERIFIED 且不误报 FP-003', async () => {
+      const validBuffer = createSyntheticValidMp4({ durationSeconds: 2 });
+      // 除文件夹归属证据外全部为真（对照 88004 全通场景，仅省略 isFolderInProject）
+      const res = await verify({
+        taskId: 88006,
+        modelId: 84,
+        mediaType: 'video',
+        terminalStatus: 'SUCCESS',
+        artifactBuffer: validBuffer,
+        scoreLogs: [{ id: 1, task_id: 88006, type: 2, score: 70 }],
+        expectedPoints: 70,
+        apiResult: { ok: true, code: 1, message: '提交成功' },
+        projectId: 10,
+        folderId: 101,
+        // isFolderInProject 故意省略：归属未证据 → 无法证明未跨项目越权
+      });
+
+      // 核心反证：修复前 isFolderInProject===undefined 落入 relationsValid=true → 业务 PASS（假绿）
+      expect(res.passed).toBe(false);
+      expect(res.businessValidation!.status).toBe('UNVERIFIED');
+      expect(res.businessValidation!.businessSuccess).toBe(false);
+      // 未证明 ≠ 硬失败：不得误判 relationsValid=false，也不得误报 FP-003 跨项目越权
+      expect(res.businessValidation!.verdictDetail.relationsValid).toBe(true);
+      expect(res.businessValidation!.verdictDetail.relationsProven).toBe(false);
+      expect(res.businessValidation!.matchedFailurePatterns).not.toContain('FP-003');
+    });
+
     it('真实业务全通场景：API 成功 + Task 成功 + 媒体物理可解码 + 账单合规 → 判定业务 ALL PASS', async () => {
       const validBuffer = createSyntheticValidMp4({ durationSeconds: 2 });
       const res = await verify({

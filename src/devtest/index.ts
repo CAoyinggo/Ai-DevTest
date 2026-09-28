@@ -228,17 +228,25 @@ export {
 /**
  * Tier 2 · 可选可插拔适配器 · UI 浏览器/视觉 AI 证据采集
  * 实现 execution-ports.ts 的 EvidenceProducer 接口。
- * 前提：需要外部 Playwright/Midscene 浏览器运行时环境。
+ * 前提：Producer 已随附且 fail-closed，但【不内置】Playwright/Midscene 运行时；
+ *   需调用方经 BrowserFactCollector / VisualAiFactCollector 接缝注入外部采集器回传原始事实
+ *   （无运行时即 fail-closed，视觉结果恒为 AI_OBSERVATION，绝不单独产 PASS）。
  * 成熟度：DEFERRED_EXTERNAL_RUNTIME（不属于零依赖交付范围）
  * @see docs/ARCHITECTURE_FREEZE.md §1.3 Tier 2
  */
 export {
   UIBrowserEvidenceProducer,
   UIVisualAiEvidenceProducer,
+  NullBrowserFactCollector,
+  NullVisualAiFactCollector,
   readPngDimensions,
   type BrowserRawCollection,
   type VisualAiRawCollection,
   type DeterministicProducerContext,
+  type BrowserFactCollector,
+  type BrowserFactCollectionRequest,
+  type VisualAiFactCollector,
+  type VisualAiFactCollectionRequest,
 } from './ui-adapters.js';
 
 /**

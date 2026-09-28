@@ -89,7 +89,9 @@ export interface EnvProbeReport {
   gatewayUrl: string;
   probedAt: string;
   auth: {
-    status: 'VALID' | 'EXPIRED' | 'MISSING';
+    // INDETERMINATE：有会话但鉴权端点返回非 200/401/403（500/重定向/无状态码等），既不能证明有效也不判定过期。
+    // 属"无法确认"，绝不并入 VALID（那会造假绿），下游按非 VALID 处理并映射为 UNVERIFIED（非硬 FAIL）。
+    status: 'VALID' | 'EXPIRED' | 'MISSING' | 'INDETERMINATE';
     details: string;
     hasSession: boolean;
   };
@@ -1004,7 +1006,7 @@ export class EnvironmentProbe {
     endpoints.push(await probeEndpoint('NewAPI 网关连通性', `${gatewayUrl}/health`, 'GET'));
 
     const authCheck = endpoints.find((e) => e.name === '业务鉴权端点');
-    let authStatus: 'VALID' | 'EXPIRED' | 'MISSING' = 'MISSING';
+    let authStatus: 'VALID' | 'EXPIRED' | 'MISSING' | 'INDETERMINATE' = 'MISSING';
     let authDetails = '未提供会话 Cookie';
 
     if (hasSession) {
@@ -1016,8 +1018,15 @@ export class EnvironmentProbe {
         authDetails = `会话已过期或无权访问 (HTTP ${authCheck.statusCode})`;
         recommendations.push('[会话凭据] 会话 Cookie 已失效，请在浏览器重新登录后更新 session 文件');
       } else {
-        authStatus = 'VALID';
-        authDetails = `响应状态 ${authCheck?.statusCode || '未知'}`;
+        // fail-closed：有会话但鉴权端点返回非 200/401/403（500/502/404/重定向/无状态码等）——无法证明会话
+        // 有效。旧逻辑此处 =VALID 会让「500/未知响应」伪装成健康(ok=true/HEALTHY/exit0)并骗过 R4 鉴权门(假绿)。
+        // 归 INDETERMINATE：非 VALID → ok=false/DEGRADED、R4 阻断；且 canonical 映射按 UNVERIFIED 处理
+        // （不臆造成 EXPIRED 那样的硬 FAIL，避免把「无法确认」误判为「确认失败」——既不假绿也不假红）。
+        authStatus = 'INDETERMINATE';
+        authDetails = `鉴权无法确认：响应状态 ${authCheck?.statusCode ?? '未知/无响应'}（非 200/401/403，既不能证明有效也不判定过期）`;
+        recommendations.push(
+          `[会话凭据] 鉴权端点返回非预期状态 (${authCheck?.statusCode ?? '未知'})，无法确认会话有效性；请人工核验网关/后端是否异常，勿据此判定环境健康`,
+        );
       }
     } else {
       recommendations.push('[会话凭据] 建议提供 --session-file 或设置 Cookie 进行完整鉴权测试');
@@ -1044,9 +1053,10 @@ export class EnvironmentProbe {
     }
 
     // fail-closed: 实路径(真实探活)要求 authStatus === 'VALID' 才判 ok/HEALTHY。
-    // MISSING 与 EXPIRED 同属"无法鉴权"——旧逻辑 `!== 'EXPIRED'` 会把"根本没有会话"当作健康(伪绿态);
-    // 二者现在一视同仁 → DEGRADED。(离线 mock 路径 generateMockReport 维持宽松结构态,
-    //  缺鉴权交由 --enforce/R4 opt-in 严格门拦截, 以守住既有"默认零改变"契约。)
+    // MISSING / EXPIRED / INDETERMINATE 三者同属"未能证明鉴权有效"——旧逻辑 `!== 'EXPIRED'` 会把"根本没有
+    // 会话"当作健康(伪绿态); 且 INDETERMINATE(非 200/401/403 的未知响应)此前被臆造成 VALID(见上)。三者现在一视
+    // 同仁 → 非 HEALTHY。(离线 mock 路径 generateMockReport 维持宽松结构态, 缺鉴权交由 --enforce/R4 opt-in
+    //  严格门拦截, 以守住既有"默认零改变"契约。)
     const ok = unreachable.length === 0 && authStatus === 'VALID';
     const status = unreachable.length > 0 ? 'BLOCKED' : ok ? 'HEALTHY' : 'DEGRADED';
 

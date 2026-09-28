@@ -664,6 +664,11 @@ export function mapProbeToCanonicalEvidence(
     } else if (rawAuthStatus === 'BLOCKED') {
       authCollectionStatus = 'BLOCKED';
       observationStatus = 'UNVERIFIED';
+    } else if (rawAuthStatus === 'INDETERMINATE') {
+      // 鉴权无法确认(端点非 200/401/403)：采集动作成功但鉴权结论未决 → UNVERIFIED
+      // （绝不臆造 PASS 造假绿，也不冒充 FAIL 造假红——"无法确认"就是 UNVERIFIED）。
+      authCollectionStatus = 'SUCCESS';
+      observationStatus = 'UNVERIFIED';
     } else {
       authCollectionStatus = 'SUCCESS';
       observationStatus = 'FAIL';
@@ -1175,14 +1180,27 @@ export function buildCanonicalEvidenceFromVerifyFacts(
       taskEvidence.source === 'session_error' ||
       (Boolean(taskEvidence.error) && taskEvidence.error!.includes('加载凭据失败'));
     const collectionStatus: EvidenceCollectionStatus = isSessionError ? 'BLOCKED' : 'SUCCESS';
-    const evidenceKey = isReal ? 'SERVER_API:TASK_STATUS' : 'FIXTURE:TASK_STATUS';
+    // 防伪/供地：operator 经 --terminal-status 显式声明的终态 (source==='provided') 属「操作者断言」，
+    // 并非主站实测轮询 (source==='live_polling') 的服务端事实。REAL 模式下若把它冒充可信 SERVER_API 证据，
+    // 操作者仅凭 --terminal-status SUCCESS 即可「自证」任务成功 → 满足 SERVER_API:TASK_STATUS 必需证据 → 假 PASS。
+    // evidence-collectors.ts:539 已对「executionMode='real' 但无有效会话」抛 EVIDENCE_CONFLICT 兜底(fail-closed)，
+    // 该守卫已使此路径不可达假 PASS；此处再按真实取证来源如实标注 provenance 作为**第二道独立防线**：
+    // provided 一律降级 USER_ASSERTION，交由 REAL 模式来源隔离 (canonical-protocol.ts:712) 拒绝，绝不冒充 SERVER_API。
+    // 对 live 裁决 (source==='live_polling') 与 FIXTURE/OFFLINE 模式零行为变化，仅收敛「声明真态」的证据来源伪装面。
+    const isOperatorAssertedTask = taskEvidence.source === 'provided';
+    const isServerVerifiedTask = isReal && !isOperatorAssertedTask;
+    const evidenceKey = isServerVerifiedTask
+      ? 'SERVER_API:TASK_STATUS'
+      : isReal
+        ? 'USER_ASSERTION:TASK_STATUS'
+        : 'FIXTURE:TASK_STATUS';
     const observationStatus: EvidenceObservationStatus = isTaskPass ? 'PASS' : isTaskInProgress ? 'UNVERIFIED' : 'FAIL';
 
     envelopes.push({
       evidenceId: `${testId}-task-1`,
       testId,
       sourceTool: 'core-kernel.verify',
-      sourceType: isReal ? 'SERVER_API' : 'FIXTURE',
+      sourceType: isServerVerifiedTask ? 'SERVER_API' : isReal ? 'USER_ASSERTION' : 'FIXTURE',
       evidenceKey,
       observationStatus,
       capturedAt,
@@ -1198,9 +1216,11 @@ export function buildCanonicalEvidenceFromVerifyFacts(
         assertionMatched: isTaskPass,
         progress: facts.progress,
       },
-      provenance: isReal
+      provenance: isServerVerifiedTask
         ? taskEvidence.source || 'SERVER_API (/aivideo/v2/task_status/apiGetStatus)'
-        : 'FIXTURE (task_status_fixture)',
+        : isReal
+          ? 'USER_ASSERTION (operator --terminal-status 声明，未经主站实测轮询)'
+          : 'FIXTURE (task_status_fixture)',
       confidence: isSessionError ? 0 : 1.0,
       immutable: true,
       redacted: true,
@@ -1216,8 +1236,12 @@ export function buildCanonicalEvidenceFromVerifyFacts(
 
   // 2. 媒体二进制验真证据 (Media Binary Evidence)
   if (facts.artifact) {
+    // fail-closed 归属校验：仅当归属证据显式为 'VERIFIED' 才认可绑定。
+    // 归属缺失/未知 (undefined) 一律按"未验真"处理——绝不因"没说 UNVERIFIED"就默认已验真。
+    // 堵住"有产物但无任何归属证据 → MEDIA_BINARY 假 PASS"向量（旧 `!== 'UNVERIFIED'` 会把 undefined 当已验真）。
+    // 与 env-probe `=== 'VALID'`、业务校验 `?? 'UNVERIFIED'` 同一纪律；真实流水线 ownership 恒有值 (VERIFIED|UNVERIFIED)，此改对 live 裁决零行为变化，仅收敛桥接层/部分构造入参的失效开口。
     const isOwnershipVerified =
-      facts.artifactOwnership !== 'UNVERIFIED' && (facts.artifact as any).ownership !== 'UNVERIFIED';
+      facts.artifactOwnership === 'VERIFIED' && facts.artifact.ownership !== 'UNVERIFIED';
     const isMediaPass = Boolean(facts.artifact.decodable) && isOwnershipVerified;
     const isFileAccessible = facts.artifact.fileAccessible !== false;
     const collectionStatus: EvidenceCollectionStatus = isFileAccessible ? 'SUCCESS' : 'MISSING';
@@ -1263,7 +1287,12 @@ export function buildCanonicalEvidenceFromVerifyFacts(
 
   // 3. 账单流水证据 (Billing Ledger Evidence)
   if (facts.billing || facts.pricingAllowPass === false) {
-    const isPricingDetermined = facts.pricingAllowPass !== false;
+    // fail-closed：定价确定性必须由 contract.pricing.allowPass **显式为 true** 证明。旧 `!== false` 把
+    // undefined（无 contract/pricing——库/桥接层构造入参可能缺失）当作"已确定" → billing.passed 直接驱动 PASS，
+    // 属"未证明定价确定即默认确定"的失效开口。真实 verify 恒经 discoverModelContract 产出 boolean allowPass
+    // (verify-pipeline:484 无条件回退)，故此改对 live 裁决**字节级不变**，仅收敛库/桥接层缺 contract 时的假绿。
+    // 与 verdict-projection:430 主裁决 `!contract.pricing.allowPass → BLOCKED` 同一纪律（此处是 canonical 证据桥的二道门）。
+    const isPricingDetermined = facts.pricingAllowPass === true;
     const isBillingPass = Boolean(facts.billing?.passed) && isPricingDetermined;
     const isSkippedLogs = !facts.billing || facts.billingAudit === 'SKIPPED_NO_LOGS';
     const isExplicitUnverified = facts.billing?.status === 'UNVERIFIED';
@@ -1496,7 +1525,11 @@ export function buildCanonicalEvidenceFromVerifyFacts(
   if (facts.regressionDiff) {
     const isRegression = facts.regressionDiff.isRegression;
     const regStatus = facts.regressionDiff.regressionStatus;
-    const observationStatus: EvidenceObservationStatus = isRegression ? 'FAIL' : 'PASS';
+    // Fail-closed 三态映射：REGRESSION→FAIL；CLEAN→PASS；UNKNOWN(基线比对关键证据不全，无法证明无回归)→UNVERIFIED。
+    // 绝不把「无法确定的回归比对」静默判为 PASS 去满足 REGRESSION_BASELINE 必需证据 (零假 PASS)。
+    // 与 DiffItem 的 UNKNOWN→BLOCKED (verdict-projection) 及本信封 assertionMatched=false / actualValue='UNKNOWN' 保持一致。
+    const observationStatus: EvidenceObservationStatus =
+      isRegression ? 'FAIL' : regStatus === 'CLEAN' ? 'PASS' : 'UNVERIFIED';
 
     envelopes.push({
       evidenceId: `${testId}-regression-1`,

@@ -25,6 +25,7 @@ import {
   type VerifyKernelResult,
 } from '../src/devtest/core-kernel.js';
 import { PanquMediaExecutionAdapter, type ExecutionAdapter } from '../src/devtest/execution-ports.js';
+import type { SideEffectPolicy } from '../src/devtest/canonical-protocol.js';
 import { evaluateProbeEnforcement } from '../src/devtest/probe-enforcement.js';
 import { DEVTEST_VERSION } from '../src/devtest/version.js';
 import { IMAGE_SOURCE_VALUES, type ImageSource } from '../src/devtest/database-evidence-producer.js';
@@ -487,7 +488,13 @@ export async function runDevTestCli(
           console.log(
             `${c.bold}鉴权凭据:${c.reset} ${result.auth.status === 'VALID' ? `${c.green}VALID (有效)${c.reset}` : `${c.yellow}${result.auth.status}${c.reset}`} ${c.dim}(${result.auth.details})${c.reset}`,
           );
-          console.log(`${c.bold}可用渠道:${c.reset} ${c.green}${result.candidateChannelCount} 个可用渠道${c.reset}`);
+          console.log(
+            `${c.bold}可用渠道:${c.reset} ${
+              result.candidateChannelCount === undefined
+                ? `${c.yellow}未知（真实探活未测量渠道就绪度，非"0 个"）${c.reset}`
+                : `${c.green}${result.candidateChannelCount} 个可用渠道${c.reset}`
+            }`,
+          );
           console.log(`\n${c.bold}端点探测明细:${c.reset}`);
           for (const ep of result.endpoints) {
             const icon = ep.reachable ? `${c.green}✔${c.reset}` : `${c.red}✖${c.reset}`;
@@ -759,7 +766,9 @@ export async function runDevTestCli(
           (options.dbCredPath as string) ||
           undefined;
 
-        const sideEffectPolicy = (options['side-effect-policy'] || options.sideEffectPolicy) as any;
+        const sideEffectPolicy = (options['side-effect-policy'] || options.sideEffectPolicy) as
+          | SideEffectPolicy
+          | undefined;
         const allowSubmit = Boolean(options['allow-submit'] || options.allowSubmit);
         const allowPaid = Boolean(options['allow-paid'] || options.allowPaid);
         const maxCostPoints =
@@ -773,7 +782,7 @@ export async function runDevTestCli(
 
         const executionAdapter =
           dependencies?.executionAdapter ||
-          (options as any).executionAdapter ||
+          (options as { executionAdapter?: ExecutionAdapter }).executionAdapter ||
           new PanquMediaExecutionAdapter({
             sessionFile,
             env,

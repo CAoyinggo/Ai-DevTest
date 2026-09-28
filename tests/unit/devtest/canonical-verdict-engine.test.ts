@@ -101,6 +101,75 @@ describe('Canonical Verdict Engine 纯函数与真值表测试 (Phase 1.4)', () 
   });
 
   // ==========================================================================
+  // fail-closed 缺口回归：断言 critical 省略即阻断（与 FAIL 门禁 critical!==false 对齐）
+  // 见 canonical-verdict-engine (5) UNVERIFIED 门禁修复：阻断性断言无法求值(UNVERIFIED)
+  // 必须落 UNVERIFIED，不得因 critical 省略而静默 PASS（旧 `=== true` 只认显式 critical:true，
+  // 与本模块已声明修复的 FAIL 侧 fail-closed 默认自相矛盾）。
+  // ==========================================================================
+  describe('八、阻断性断言 UNVERIFIED fail-closed (critical 省略即阻断)', () => {
+    type Assertion = NonNullable<CanonicalTestSpec['deterministicAssertions']>[number];
+    // 追加一条断言；所有必需证据均 PASS，故唯一决定 PASS/UNVERIFIED 的就是被修的门禁。
+    const withExtraAssertion = (extra: Assertion): CanonicalTestSpec => ({
+      ...baseSpec,
+      deterministicAssertions: [...(baseSpec.deterministicAssertions ?? []), extra],
+    });
+    const allRequiredPass = () => [createServerTaskEnv(), createServerChannelEnv(), createBillingEnv()];
+
+    it('8.1 critical 省略 + 无法求值(UNVERIFIED) → UNVERIFIED（修复前为假 PASS）', () => {
+      const spec = withExtraAssertion({
+        field: 'task.opaque',
+        operator: 'EQUALS',
+        expectedValue: 'X',
+        // critical 省略：按 fail-closed 默认等价 critical:true（阻断）
+        evidenceKey: 'SERVER_API:TASK_STATUS',
+        actualField: 'nonExistentField', // 字段缺失 → status=UNVERIFIED
+      });
+      const res = evaluateCanonicalVerdict(spec, allRequiredPass());
+      expect(res.verdict).toBe('UNVERIFIED');
+      expect(res.reasons.some((r) => r.includes('task.opaque'))).toBe(true);
+    });
+
+    it('8.2 critical:false(顾问性) + 无法求值 → 仍 PASS（不过度收敛）', () => {
+      const spec = withExtraAssertion({
+        field: 'task.advisory',
+        operator: 'EQUALS',
+        expectedValue: 'X',
+        critical: false,
+        evidenceKey: 'SERVER_API:TASK_STATUS',
+        actualField: 'nonExistentField',
+      });
+      const res = evaluateCanonicalVerdict(spec, allRequiredPass());
+      expect(res.verdict).toBe('PASS');
+    });
+    it('8.3 critical:true + 无法求值 → UNVERIFIED（显式路径无回归，门禁与理由列表同步）', () => {
+      const spec = withExtraAssertion({
+        field: 'task.explicitCritical',
+        operator: 'EQUALS',
+        expectedValue: 'X',
+        critical: true,
+        evidenceKey: 'SERVER_API:TASK_STATUS',
+        actualField: 'nonExistentField',
+      });
+      const res = evaluateCanonicalVerdict(spec, allRequiredPass());
+      expect(res.verdict).toBe('UNVERIFIED');
+      expect(res.reasons.some((r) => r.includes('task.explicitCritical'))).toBe(true);
+    });
+
+    it('8.4 critical 省略但可正常求值且 PASS → PASS（仅对 UNVERIFIED 生效，不误伤健康断言）', () => {
+      const spec = withExtraAssertion({
+        field: 'task.healthy',
+        operator: 'EQUALS',
+        expectedValue: 'PASS',
+        // critical 省略
+        evidenceKey: 'SERVER_API:TASK_STATUS',
+        actualField: 'observedStatus', // 真实存在且 = 'PASS'
+      });
+      const res = evaluateCanonicalVerdict(spec, allRequiredPass());
+      expect(res.verdict).toBe('PASS');
+    });
+  });
+
+  // ==========================================================================
   // 真值表测试 1~13: 裁决优先级与状态流转
   // ==========================================================================
   describe('一、裁决优先级与真值表核心规则', () => {
@@ -565,6 +634,67 @@ describe('Canonical Verdict Engine 纯函数与真值表测试 (Phase 1.4)', () 
       expect(res.verdict).toBe('UNVERIFIED');
       expect(res.blockers.some((b) => b.code === 'NO_EVALUABLE_EVIDENCE_SPEC')).toBe(true);
       expect(res.reasons.some((r) => r.includes('空规格 PASS'))).toBe(true);
+    });
+
+    it('24. 空规格门禁强化：requiredEvidence 为空且断言全为 advisory(critical:false) → UNVERIFIED，绝不因无阻断条件静默 PASS [FAIL_CLOSED]', () => {
+      // 该规约结构上永不可能失败：无必需证据 + 唯一断言为顾问性(critical:false)。
+      // 修复前会绕过底线门禁(仅校验数组非空)，因无任何阻断条件而落 PASS —— 空规格假绿残留通路。
+      const allAdvisorySpec: CanonicalTestSpec = {
+        testId: 'test-all-advisory-spec',
+        requirementId: 'REQ-ADVISORY-01',
+        scenario: 'ALL_ADVISORY_TEST',
+        environment: 'test',
+        executionMode: 'REAL',
+        target: { targetType: 'model' },
+        inputs: {},
+        deterministicAssertions: [
+          {
+            field: 'cosmetic.hint',
+            operator: 'EQUALS',
+            expectedValue: 'whatever',
+            critical: false, // 顾问性：即便失败也不阻断
+          },
+        ],
+        costLimit: { maxCostPoints: 0 },
+        sideEffectPolicy: 'READ_ONLY',
+        requiredEvidence: [],
+      };
+
+      const res = evaluateCanonicalVerdict(allAdvisorySpec, []);
+      expect(res.verdict).toBe('UNVERIFIED');
+      expect(res.blockers.some((b) => b.code === 'NO_EVALUABLE_EVIDENCE_SPEC')).toBe(true);
+      expect(res.reasons.some((r) => r.includes('空规格 PASS'))).toBe(true);
+      expect(res.reasons.some((r) => r.includes('advisory'))).toBe(true);
+    });
+
+    it('25. 底线门禁不误伤：requiredEvidence 为空但存在 ≥1 阻断型断言(critical 省略=阻断) → 正常进入求值，不被空规格门禁拦截', () => {
+      // 仅有阻断型断言、无必需证据是合法的最小可求值规约，必须放行进入正常裁决，
+      // 不得被强化后的门禁误判为空规格。此处断言可正常求值为 PASS。
+      const assertionOnlySpec: CanonicalTestSpec = {
+        testId: 'test-assertion-only-spec',
+        requirementId: 'REQ-ASSERTION-ONLY-01',
+        scenario: 'ASSERTION_ONLY_TEST',
+        environment: 'test',
+        executionMode: 'REAL',
+        target: { targetType: 'model' },
+        inputs: {},
+        deterministicAssertions: [
+          {
+            field: 'task.status',
+            operator: 'EQUALS',
+            expectedValue: 'SUCCESS',
+            // critical 省略 → 阻断型
+            evidenceKey: 'SERVER_API:TASK_STATUS',
+            actualField: 'observedStatus',
+          },
+        ],
+        costLimit: { maxCostPoints: 0 },
+        sideEffectPolicy: 'READ_ONLY',
+        requiredEvidence: [],
+      };
+
+      const res = evaluateCanonicalVerdict(assertionOnlySpec, [createServerTaskEnv()]);
+      expect(res.blockers.some((b) => b.code === 'NO_EVALUABLE_EVIDENCE_SPEC')).toBe(false);
     });
   });
 

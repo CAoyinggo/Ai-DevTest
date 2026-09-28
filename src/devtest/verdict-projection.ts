@@ -107,11 +107,16 @@ export async function buildAutoDiversionEligibility(
       },
     };
   }
+  // 视频请求级硬性资格 isVideoRequestEligible（isWan3/videoType/真人人像/提示词长度/输出格式）无法从
+  // 库配置或 verify 入参自动推导：缺省时绝不臆造 true（会把"未过硬性资格却被分流"的真 bug 误判为假绿），
+  // 也绝不臆造 false（会造假 FAIL）。一键模式下未显式提供 eligible 即无法诚实断言视频分流资格，
+  // 返回 undefined 不挂载该断言（fail-closed，与本函数其它"无法构造→undefined"分支一致）。
+  if (a.eligible === undefined) return undefined;
   return {
     mediaType: 'video',
     video: {
       routeMode: b.routeMode,
-      eligible: a.eligible ?? true,
+      eligible: a.eligible,
       modelId,
       isGlobalModel: b.isGlobalModel,
       alias: b.alias,
@@ -753,6 +758,10 @@ export async function computeFinalVerdict(args: ComputeFinalVerdictArgs): Promis
     });
 
   const reasons: string[] = [];
+  // R8: DB 权威重定价/降级如实标注（operator 未声明 --model 时用真实落库模型回算，或未登记目录时 fail-closed）。
+  if (ctx.expectedRepriceNote) {
+    reasons.push(ctx.expectedRepriceNote);
+  }
   // R3: 计费期望来源如实标注。--expected-points 覆盖系统刊例推导值时，账务断言的可信度
   // 完全取决于该操作者输入是否正确——显式记入 reasons，避免「自证其说」式误判被静默放过。
   if (ctx.expectedPointsSource === 'OPERATOR_SUPPLIED') {

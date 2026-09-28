@@ -170,7 +170,7 @@ flowchart TD
 | **需求追溯与影响分析** | 关联需求稳定 ID、推导影响用例与覆盖缺口 | [`requirement-trace.ts`](src/devtest/requirement-trace.ts) |
 | **规范测试规约** | 声明式确定性断言、`costLimit`、`sideEffectPolicy` 强类型 | [`canonical-protocol.ts`](src/devtest/canonical-protocol.ts) |
 | **核心内核调度** | 单向驱动 `probe`/`plan`/`execute`/`verify` | [`core-kernel.ts`](src/devtest/core-kernel.ts) |
-| **执行适配与 UI 证据** | 工具无关的 DOM/网络/截图/视觉**事实契约**；**不内置 Playwright/Midscene 驱动**，需调用方注入 Producer（视觉结果恒为 `AI_OBSERVATION`，绝不单独产 PASS） | [`ui-adapters.ts`](src/devtest/ui-adapters.ts) |
+| **执行适配与 UI 证据** | 工具无关的 DOM/网络/截图/视觉**事实契约**；Producer 已随附且严格 fail-closed，但**不内置 Playwright/Midscene 运行时**，需调用方经 `BrowserFactCollector`/`VisualAiFactCollector` 接缝注入外部采集器回传原始事实（无运行时即 fail-closed；视觉结果恒为 `AI_OBSERVATION`，绝不单独产 PASS） | [`ui-adapters.ts`](src/devtest/ui-adapters.ts) |
 | **数据库物理取证** | 真实模式下只读 SSH 落库取证，失败关闭 | [`database-evidence-producer.ts`](src/devtest/database-evidence-producer.ts) |
 | **唯一裁决引擎** | 纯三态裁决，门禁阻断表示为 `UNVERIFIED + blocker`，零假 PASS | [`canonical-verdict-engine.ts`](src/devtest/canonical-verdict-engine.ts) |
 | **多端交付与持久化** | 双模同源呈现；深冻结结果单向导出 | [`result-sink.ts`](src/devtest/result-sink.ts) |

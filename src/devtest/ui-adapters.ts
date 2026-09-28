@@ -44,6 +44,79 @@ export interface DeterministicProducerContext extends EvidenceProducerContext {
 }
 
 // ============================================================================
+// 一之补充、外部运行时事实采集器接缝 (Bring-Your-Own-Runtime Collector Seam)
+//   诚实能力边界：本零依赖内核【不安装、不导入、不捆绑】任何浏览器/视觉运行时。
+//   下述接口仅定义"外部运行时如何把【已采集】的原始 UI 事实交给上面的 EvidenceProducer"
+//   的类型化契约，其自身【不执行】任何浏览器/视觉操作，也不引入 Playwright/Midscene 依赖。
+//   参考实现范式（可执行、零依赖、CI 恒绿）：tests/unit/devtest/ui-fact-collector-seam.test.ts
+//   —— 内含一个外部 fake 采集器回传真实事实、据实驱动 PASS 的完整数据流；真实 Playwright 封装
+//   只应存在于【外部工程自己的 package.json】，绝不写入 test-flow（详见 docs/ARCHITECTURE_FREEZE.md:240）。
+// ============================================================================
+
+/** 浏览器事实采集请求：由调用方声明"要采集什么"，不含任何运行时实现细节 */
+export interface BrowserFactCollectionRequest {
+  readonly pageUrl: string;
+  readonly rowSelector?: string;
+  readonly interceptEndpoint?: string;
+  readonly screenshotPath?: string;
+  readonly subjectId?: string | number;
+}
+
+/**
+ * 浏览器事实采集器契约 (Bring-Your-Own-Runtime Seam)
+ *
+ * 重要（诚实定位，禁止读为"已内置浏览器驱动"）：
+ * - 本包已随附 {@link UIBrowserEvidenceProducer} 且严格 fail-closed；真正【缺失】的是"驱动真实浏览器
+ *   并回传原始 DOM/网络/截图事实"的运行时。本接口即该缺口的【显式接缝】。
+ * - 由【外部工程】实现（例如在自有仓库封装 Playwright/CDP），返回 {@link BrowserRawCollection} 原始事实，
+ *   再交由 UIBrowserEvidenceProducer 生成规范证据信封；本包不为该实现提供任何运行时。
+ * - 采集器【只回传原始事实】，绝不生成 capturedAt / evidenceId：确定性时间戳与证据 ID 仍由调用方经
+ *   {@link DeterministicProducerContext} 显式提供（禁止在采集器内部使用 Date.now() 或随机数）。
+ * - 未注入任何实现时，Producer 因缺失原始事实而 COLLECTION_FAILED / UNVERIFIED，绝不合成默认 PASS。
+ */
+export interface BrowserFactCollector {
+  /** 外部运行时标识（如 'playwright@1.x (external)'）；仅供溯源，不代表本包已内置该运行时 */
+  readonly runtimeName: string;
+  collect(request: BrowserFactCollectionRequest): Promise<BrowserRawCollection>;
+}
+
+/** 视觉辅助事实采集请求 */
+export interface VisualAiFactCollectionRequest {
+  readonly instruction: string;
+  readonly screenshotPath?: string;
+}
+
+/**
+ * 视觉辅助事实采集器契约 (Bring-Your-Own-Runtime Seam；对应 Midscene 类思路)
+ * 约束同 {@link BrowserFactCollector}：不捆绑任何视觉大模型运行时。返回的 visualInference 仅会驱动
+ * AI_OBSERVATION 证据，而该证据【恒不具备单独 PASS 裁决权】（由 UIVisualAiEvidenceProducer 保证）。
+ */
+export interface VisualAiFactCollector {
+  readonly runtimeName: string;
+  collect(request: VisualAiFactCollectionRequest): Promise<VisualAiRawCollection>;
+}
+
+/**
+ * 空浏览器采集器 (No-Op Fail-Closed Default)
+ * 无任何外部运行时可用时的确定性缺省实现：返回空原始事实，使 UIBrowserEvidenceProducer 走 fail-closed
+ * 分支（COLLECTION_FAILED / UNVERIFIED），以显式表达"无运行时 ⇒ 无事实 ⇒ 绝不臆造 PASS"，而非静默假装成功。
+ */
+export class NullBrowserFactCollector implements BrowserFactCollector {
+  readonly runtimeName = 'null-browser-fact-collector (no external runtime installed)';
+  async collect(): Promise<BrowserRawCollection> {
+    return {};
+  }
+}
+
+/** 空视觉采集器 (No-Op Fail-Closed Default)，语义同 {@link NullBrowserFactCollector} */
+export class NullVisualAiFactCollector implements VisualAiFactCollector {
+  readonly runtimeName = 'null-visual-ai-fact-collector (no external runtime installed)';
+  async collect(): Promise<VisualAiRawCollection> {
+    return {};
+  }
+}
+
+// ============================================================================
 // 二、纯物理文件元数据工具函数
 // ============================================================================
 

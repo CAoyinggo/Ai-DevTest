@@ -43,9 +43,12 @@ import {
   queryDatabasePhysicalFacts,
   mapDbScoreLogsToScoreLogEntries,
   resolveDatabaseCredentialsPath,
+  resolveFrontendTaskRecord,
+  imageSourceToFrontendTable,
   type DatabaseRawCollection,
   type ImageSource,
 } from './database-evidence-producer.js';
+import { resolveCatalogModelPrice } from './pricing-catalog.js';
 import { loadDiversionPricing, resolveListPrice, type PricingScope } from './diversion-pricing-authority.js';
 import { type DiversionEligibilityInput } from './diversion-eligibility-producer.js';
 import { type DiversionConfigRawCollection } from './diversion-config-reader.js';
@@ -236,7 +239,7 @@ export interface VerifyKernelOptions {
 /** verify() 一键分流资格断言的入参（DB 侧规则/模型上下文自动补全，仅需给请求参数）。 */
 export interface AutoDiversionEligibilityOptions {
   mediaType?: 'video' | 'image';
-  eligible?: boolean; // 视频硬性资格(isVideoRequestEligible)结果，默认 true
+  eligible?: boolean; // 视频硬性资格(isVideoRequestEligible)结果。无法从库配置/verify入参自动推导；一键视频模式下未显式提供则不挂载分流资格断言(fail-closed，绝不臆造 true/false)
   resolution?: string; // 默认取 options.resolution
   aspect?: string; // 默认 'auto'
   routeGroup?: { newapi_group: string; usable: boolean } | null;
@@ -328,6 +331,8 @@ export interface VerifyContext {
   expectedPointsSource: 'OPERATOR_SUPPLIED' | 'DEVTEST_CALCULATED';
   /** R3: 系统刊例推导的期望积分（无论是否被操作者覆盖都保留，用于来源对账与降权提示）。 */
   systemCalculatedExpectedPoints: number;
+  /** R8: DB 物理取证后，若操作者未声明 --model 且默认猜测模型 ≠ 真实落库模型，此处记重定价/降级说明（透明化，供裁决投影展示）。 */
+  expectedRepriceNote?: string;
   session: PanquSession | null;
   sessionLoadError?: string;
   executionMode: 'real' | 'offline' | 'fixture';
@@ -587,6 +592,118 @@ export async function resolveVerifyContext(
     sessionLoadError,
     executionMode,
   };
+}
+
+/**
+ * R8 计费期望「DB 权威重定价」(fail-closed)。
+ *
+ * 背景：operator 未显式 `--model` 时，resolveVerifyContext 会把图片模型**默认猜**成 201（视频 84），
+ * 据此猜测价推导「应扣积分」。对真实非默认模型的图片任务，这会产生
+ * 「默认猜测价 ≠ 真实刊例价 → 假超扣/假少扣 (假 FP-005 资损告警)」，且这是**最自然的调用方式**下即可复现的假红。
+ *
+ * 本函数在 collectTaskEvidence(拿到 DB 物理取证) 之后、collectBillingEvidence 之前调用，
+ * 用前台源表物理记录里的**真实模型**(extra.selmodelsId / 顶层列 selmodelsId)回算刊例期望：
+ *   (a) 真实模型命中 official-pricing-catalog → 用回算后的期望积分替换默认猜测价（消除假红，仍能抓真超扣）；
+ *   (b) 真实模型**未登记**目录 且 终态 SUCCESS → 置刊例定价未确定(allowPass=false)，
+ *       账务幅度断言经既有 fail-closed 闸门降级为 UNVERIFIED，**绝不据猜测价喷超扣**(不引入假绿)。
+ *
+ * 严格 opt-out 门禁（ARCHITECTURE_FREEZE「默认零改变」）：仅当
+ *   媒体=image 且 operator **未**提供任何价格/模型入参
+ *   (--model / --expected-points / --price / --custom-points / --points-per-second 全未给)
+ * 时才可能生效；任一显式路径**字节级零改变**。ctx.modelId 保持不变(避免与契约不一致)，仅动期望积分与刊例可信度。
+ * 失败任务「净扣归零」核验与期望幅度无关，故 (b) 分支只对 SUCCESS 生效，杜绝误伤合法失败退款 PASS。
+ */
+export function applyDbAuthoritativeExpectedReprice(
+  ctx: VerifyContext,
+  options: VerifyKernelOptions,
+  taskResult: TaskEvidenceResult,
+): void {
+  // 门禁 1：仅图片；operator 未提供任何价格/模型入参（任一显式路径零改变）
+  const operatorSuppliedPricing =
+    options.modelId !== undefined ||
+    options.expectedPoints !== undefined ||
+    options.price !== undefined ||
+    options.customPoints !== undefined ||
+    options.pointsPerSecond !== undefined;
+  if (ctx.mediaType !== 'image' || operatorSuppliedPricing) return;
+
+  // 门禁 2：取前台源表物理记录（图片四源表可 --image-source 消歧；未指定按既有顺序首命中）
+  const preferredTable = options.imageSource ? imageSourceToFrontendTable(options.imageSource) : undefined;
+  const { record } = resolveFrontendTaskRecord(taskResult.dbEvidence?.recordsFound, preferredTable);
+  if (!record) return;
+
+  // extra：优先复用管线已解析的 extraObj，回退解析记录里的 extra
+  let extra: Record<string, unknown> | undefined = taskResult.routingFacts.extraObj;
+  if (!extra) {
+    const rawExtra = record.extra;
+    if (typeof rawExtra === 'string') {
+      try {
+        extra = JSON.parse(rawExtra) as Record<string, unknown>;
+      } catch {
+        extra = undefined;
+      }
+    } else if (rawExtra && typeof rawExtra === 'object') {
+      extra = rawExtra as Record<string, unknown>;
+    }
+  }
+
+  // 真实模型 id：extra.selmodelsId(取证字段,字符串如 '57') > 顶层列 selmodelsId > extra.selmodels 前导整数('57-alias')
+  const dbModelId = readDbAuthoritativeModelId(record, extra);
+  // 缺失/非正/恰等于默认猜测值 → 无需重定价（默认行为字节级不变）
+  if (!Number.isFinite(dbModelId) || dbModelId <= 0 || dbModelId === ctx.modelId) return;
+
+  const dbResolution = typeof extra?.resolution === 'string' ? (extra.resolution as string) : ctx.resolution;
+  const dbServiceline = typeof extra?.serviceline === 'string' ? (extra.serviceline as string) : undefined;
+
+  const cat = resolveCatalogModelPrice({
+    mediaType: 'image',
+    modelId: dbModelId,
+    resolution: dbResolution,
+    serviceline: dbServiceline,
+  });
+
+  if (cat) {
+    // (a) 真实模型有刊例：用真实模型价替换默认猜测价
+    const corrected = Math.round(cat.value);
+    const guessedModel = ctx.modelId;
+    const guessedPoints = ctx.expectedPoints;
+    ctx.expectedPoints = corrected;
+    ctx.systemCalculatedExpectedPoints = corrected;
+    ctx.expectedRepriceNote =
+      `[DB_AUTHORITATIVE_REPRICE] operator 未声明 --model：系统原按默认模型 ${guessedModel} 猜测应扣 ${guessedPoints} pt；` +
+      `已改用数据库物理记录真实模型 ${dbModelId}(${cat.catalogKey}@${cat.resolutionKey ?? dbResolution ?? '-'})=${corrected} pt 回算，消除“默认猜测模型价→假超扣”(假 FP-005)。`;
+    return;
+  }
+
+  // (b) 真实模型未登记刊例目录：仅对 SUCCESS 任务 fail-closed（失败任务核验 net=0 与期望幅度无关，勿误伤）
+  if (taskResult.terminalStatus === 'SUCCESS') {
+    ctx.contract.pricing.allowPass = false;
+    ctx.contract.pricing.isPricingDetermined = false;
+    ctx.contract.pricing.source = 'MANUAL_REQUIRED';
+    ctx.expectedRepriceNote =
+      `[MODEL_PRICE_UNKNOWN] operator 未声明 --model：数据库物理记录真实模型 ${dbModelId} 未登记 official-pricing-catalog，` +
+      `无法可信推导应扣积分；超扣/少扣断言已 fail-closed 降级为 UNVERIFIED（不据默认猜测 ${ctx.modelId}=${ctx.expectedPoints} pt 喷超扣）。请补目录或以 --model/--expected-points 复核。`;
+  }
+}
+
+/** 从前台源表物理记录解析真实模型 id：extra.selmodelsId > 顶层列 selmodelsId > extra.selmodels 前导整数。 */
+function readDbAuthoritativeModelId(
+  record: Record<string, unknown>,
+  extra: Record<string, unknown> | undefined,
+): number {
+  const toNum = (v: unknown): number => {
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') {
+      const m = v.match(/^\s*(\d+)/); // 兼容 '57' 与 '57-alias'
+      return m ? Number(m[1]) : NaN;
+    }
+    return NaN;
+  };
+  for (const cand of [extra?.selmodelsId, record.selmodelsId, extra?.selmodels]) {
+    const n = toNum(cand);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return NaN;
 }
 
 // ── 物理分解 re-export（保持公共导出面零变化，ARCHITECTURE_FREEZE §2.2 Phase 6）──

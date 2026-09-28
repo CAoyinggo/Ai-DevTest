@@ -266,10 +266,21 @@ export function evaluateCanonicalVerdict(
   }
 
   // 1.1 最小可求值底线门禁 (Fail-Closed)
-  // 若规约既未声明必需证据，也未定义确定性断言，缺少可求值证据契约，严禁返回假 PASS
+  // 规约必须至少声明一个「阻断型」求值契约，否则结构上永不可能失败，等同空规格假 PASS。
+  // 阻断型 = 非空 requiredEvidence（缺失即阻断）或 ≥1 条 critical !== false 的确定性断言。
+  // 与本模块 FAIL(L674)/UNVERIFIED(L715) 及逐条 isBlocking(L370) 门禁的 fail-closed 默认对齐：
+  // critical 省略/true 视为阻断，仅显式 critical:false 为 advisory(顾问性)。
+  // 修复漏洞：旧门禁仅校验数组「非空」，故「requiredEvidence:[] + 全 advisory 断言」的规约会绕过
+  // 底线门禁，因无任何阻断条件而静默落 PASS——这是空规格假绿的残留通路。真实生成器
+  // (verdict-projection buildCanonicalSpec) 始终产出非空 requiredEvidence 且断言全 critical:true，
+  // 故对 live 裁决零行为变化，此为纯防御纵深收敛。
   const hasReqEvidenceSpec = Array.isArray(spec.requiredEvidence) && spec.requiredEvidence.length > 0;
-  const hasAssertionsSpec = Array.isArray(spec.deterministicAssertions) && spec.deterministicAssertions.length > 0;
-  if (!hasReqEvidenceSpec && !hasAssertionsSpec) {
+  const assertionsSpec = Array.isArray(spec.deterministicAssertions) ? spec.deterministicAssertions : [];
+  const hasAssertionsSpec = assertionsSpec.length > 0;
+  const hasBlockingAssertion = assertionsSpec.some((a) => a.critical !== false);
+  const hasBlockingCriterion = hasReqEvidenceSpec || hasBlockingAssertion;
+  if (!hasBlockingCriterion) {
+    const allAdvisory = hasAssertionsSpec; // 有断言但全部为 advisory(critical:false)
     return {
       verdict: 'UNVERIFIED',
       testId: spec.testId,
@@ -283,12 +294,18 @@ export function evaluateCanonicalVerdict(
       },
       assertionResults: [],
       evidenceIdsUsed: [],
-      reasons: ['TestSpec 未声明任何必需证据或确定性断言，缺少可求值证据契约，严禁产生空规格 PASS [FAIL_CLOSED]'],
+      reasons: [
+        allAdvisory
+          ? 'TestSpec 无必需证据，且所有确定性断言均为 advisory(critical:false)，该规约结构上永不可能失败，严禁产生空规格 PASS [FAIL_CLOSED]'
+          : 'TestSpec 未声明任何必需证据或确定性断言，缺少可求值证据契约，严禁产生空规格 PASS [FAIL_CLOSED]',
+      ],
       warnings,
       blockers: [
         {
           code: 'NO_EVALUABLE_EVIDENCE_SPEC',
-          message: 'TestSpec 既无 requiredEvidence 也无 deterministicAssertions，缺少最小证据求值底线',
+          message: allAdvisory
+            ? 'TestSpec 无 requiredEvidence，且 deterministicAssertions 全为 advisory(critical:false)，缺少任何阻断型求值底线'
+            : 'TestSpec 既无 requiredEvidence 也无 deterministicAssertions，缺少最小证据求值底线',
         },
       ],
     };
@@ -705,9 +722,14 @@ export function evaluateCanonicalVerdict(
   const hasMissingRequiredEvidence = reqEvaluation.missingEvidenceKeys.length > 0;
   const hasUnverifiedRequiredEvidence = reqEvaluation.unverifiedEvidenceKeys.length > 0;
 
-  // (5) UNVERIFIED 优先级二：关键断言缺少绑定、字段缺失或无法计算
+  // (5) UNVERIFIED 优先级二：阻断性断言缺少绑定、字段缺失或无法计算
+  // Fail-closed 默认：与 FAIL 门禁 (L674 `critical !== false`) 及逐条 isBlocking (L370) 对齐——
+  // 省略 critical 视为阻断（等价 critical:true）。堵住「阻断性断言无法求值(UNVERIFIED)，
+  // 却因 critical 省略而不计入 UNVERIFIED 门禁 → 静默落 PASS」的假绿通路：旧 `=== true` 只认
+  // 显式 critical:true，与本模块 L368-370 已声明修复的 fail-closed 默认自相矛盾（FAIL 侧堵了、
+  // UNVERIFIED 侧仍漏）。真实流水线所有断言均显式声明 critical，故对 live 裁决零行为变化。
   const hasUnverifiedCriticalAssertion = assertionResults.some(
-    (a) => a.assertion.critical === true && a.status === 'UNVERIFIED',
+    (a) => a.assertion.critical !== false && a.status === 'UNVERIFIED',
   );
 
   // (6) UNVERIFIED 优先级三：AI_OBSERVATION 和 USER_ASSERTION 不能单独让业务验收 PASS
@@ -730,7 +752,7 @@ export function evaluateCanonicalVerdict(
     }
     if (hasUnverifiedCriticalAssertion) {
       const unvCritList = assertionResults
-        .filter((a) => a.assertion.critical === true && a.status === 'UNVERIFIED')
+        .filter((a) => a.assertion.critical !== false && a.status === 'UNVERIFIED')
         .map((a) => `${a.assertion.field} (${a.reason || '无法计算'})`);
       reasons.push(`关键断言缺少绑定或字段缺失: ${unvCritList.join('; ')}`);
     }

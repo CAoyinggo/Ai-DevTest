@@ -22,7 +22,8 @@
         "byServiceline": { "r": "nano-banana-pro-r", "k": "nano-banana-pro-k", "t": "nano-banana-pro-tencent" }
       },
       "201": "nano-banana-2-k",
-      "205": "gpt-image-2.5-baseline"
+      "205": "gpt-image-2.5-baseline",
+      "57": "pan-image-2-lowcost"
     }
   },
 
@@ -287,6 +288,17 @@
         "1k": 9,
         "2k": 15,
         "4k": 18
+      }
+    },
+    "pan-image-2-lowcost": {
+      "name": "Pan Image 2 (低价版)",
+      "provider": "agentearth (earth/gpt-image-2-lowcost)",
+      "billingType": "FIXED",
+      "_priceSource": "pq_absetting model_config_id=57 · list_price_points 按分辨率整数码(1K=4/2K=5/4K=6)",
+      "resolutions": {
+        "1k": 7,
+        "2k": 12,
+        "4k": 15
       }
     },
     "gpt-image-2.5-lowcost": {

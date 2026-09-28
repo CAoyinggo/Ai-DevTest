@@ -98,7 +98,7 @@ export class DiversionEligibilityProducer implements EvidenceProducer {
               hardError: r.hardError,
             };
           })()
-        : input.video
+        : input.mediaType === 'video' && input.video
           ? (() => {
               const r = evaluateVideoDiversion(input.video!);
               return {
@@ -115,7 +115,11 @@ export class DiversionEligibilityProducer implements EvidenceProducer {
 
     let observationStatus: 'PASS' | 'FAIL' | 'UNVERIFIED';
     let matched: boolean | undefined;
-    if (!observed.hasObserved) {
+    if (predicted.decision === 'NO_INPUT') {
+      // 无可评估的分流预测：mediaType 与所供 video/image 子输入不匹配（或两者均缺）。
+      // 绝不能因 NO_INPUT 兜底的 diverted:false 恰好撞上「未分流」落库而伪造 PASS —— fail-closed。
+      observationStatus = 'UNVERIFIED';
+    } else if (!observed.hasObserved) {
       observationStatus = 'UNVERIFIED'; // 只有预测、无落库对照
     } else {
       matched = predicted.diverted === observed.observedDiverted;
@@ -147,7 +151,7 @@ export class DiversionEligibilityProducer implements EvidenceProducer {
           matched,
         },
         provenance: 'DIVERSION_ELIGIBILITY:newapi_route_rules_gate(model×resolution×aspect×enabled)',
-        confidence: observed.hasObserved ? 1.0 : 0.0,
+        confidence: predicted.decision === 'NO_INPUT' ? 0.0 : observed.hasObserved ? 1.0 : 0.0,
         immutable: true,
         redacted: false,
         collectionStatus: observed.hasObserved ? 'SUCCESS' : 'MISSING',

@@ -61,6 +61,59 @@ export interface PollTaskStatusOptions {
   onProgress?: (snapshot: TaskStatusSnapshot) => void;
 }
 
+// —— 以下为本模块内部用于安全解析后台 HTTP JSON 的最小读取形状（仅覆盖代码实际读取的字段，
+//    解析结果先落到这些窄接口再读取，杜绝隐式 any 透传；不改变任何运行期行为）——
+
+/** /task_status 轮询响应中的单个任务对象（可能位于数组、以 taskId 为键的映射，或直接对象） */
+interface RawTaskStatusItem {
+  id?: number | string;
+  status?: number | RawTaskStatusItem | null;
+  task_status?: number;
+  progress?: number;
+  video_url?: string;
+  image_url?: string;
+  pic_url?: string;
+  err?: string;
+  error?: string;
+}
+
+/** FastAdmin AdminScore / 个人账单流水单行记录（两个端点读取字段的并集超集） */
+interface RawScoreRow {
+  id?: number | string;
+  task_id?: number | string;
+  source_id?: number | string;
+  remark?: string;
+  source_name?: string;
+  memo?: string;
+  type?: number | string;
+  record_type?: number | string;
+  score?: number;
+  points?: number;
+  type_text?: string;
+  model?: string;
+  project?: string;
+  time?: number | string;
+  createtime?: number | string;
+}
+
+/** /aivideo/diversion/retrylog 单行（含索引签名以便整行回传至 Record<string, unknown> 证据字段） */
+interface RawRetryLogRow {
+  newapi_channel_id?: number | string;
+  newapi_provider_name?: string;
+  fallback_channel?: string;
+  task_id?: number | string;
+  newapi_status?: string;
+  [key: string]: unknown;
+}
+
+/** /aivideo/exceptionaltaskdata 单行（同上，含索引签名以便整行回传证据字段） */
+interface RawExceptionalTaskRow {
+  id?: number | string;
+  extra?: unknown;
+  line_name?: string;
+  [key: string]: unknown;
+}
+
 export async function fetchWithRetry(url: string, options: RequestInit, retries = 3): Promise<Response> {
   const headers = { Connection: 'close', ...((options.headers as Record<string, string>) || {}) };
   let lastError: unknown;
@@ -95,7 +148,7 @@ export async function fetchCsrfToken(baseUrl: string, cookies: string): Promise<
     throw new Error(`CSRF_REQUEST_FAILED: HTTP ${response.status} ${response.statusText}`);
   }
 
-  let data: any;
+  let data: { data?: { __token__?: string; token?: string }; __token__?: string } | undefined;
   try {
     data = await response.json();
   } catch {
@@ -344,10 +397,14 @@ export async function pollTaskStatus(
       });
 
       if (res.ok) {
-        const body = (await res.json()) as any;
-        const taskObj = Array.isArray(body?.data)
-          ? body.data.find((item: any) => Number(item.id) === taskId)
-          : (body?.data?.[taskId] ?? body?.data);
+        const body = (await res.json()) as {
+          data?: RawTaskStatusItem[] | Record<number, RawTaskStatusItem> | RawTaskStatusItem;
+        };
+        const dataField = body?.data;
+        const taskObj: RawTaskStatusItem | undefined = Array.isArray(dataField)
+          ? dataField.find((item) => Number(item.id) === taskId)
+          : ((dataField as Record<number, RawTaskStatusItem> | undefined)?.[taskId] ??
+            (dataField as RawTaskStatusItem | undefined));
         if (taskObj) {
           const statusObj = typeof taskObj.status === 'object' && taskObj.status !== null ? taskObj.status : taskObj;
           const taskStatus = Number(statusObj.task_status ?? (typeof taskObj.status === 'number' ? taskObj.status : 0));
@@ -450,7 +507,7 @@ export async function queryTaskBillingLogs(
         lastSource = 'auth_adminscore';
       } else {
         const text = await res.text();
-        let body: any;
+        let body: { rows?: RawScoreRow[] } | undefined;
         try {
           body = JSON.parse(text);
         } catch {
@@ -485,7 +542,7 @@ export async function queryTaskBillingLogs(
                 2,
               );
               if (sourceRes.ok) {
-                const sourceBody = (await sourceRes.json()) as any;
+                const sourceBody = (await sourceRes.json()) as { rows?: RawScoreRow[] };
                 if (sourceBody && Array.isArray(sourceBody.rows) && sourceBody.rows.length > 0) {
                   rows = sourceBody.rows;
                 }
@@ -495,7 +552,7 @@ export async function queryTaskBillingLogs(
             }
           }
 
-          const matchedLogs: ScoreLogEntry[] = rows.map((r: any) => {
+          const matchedLogs: ScoreLogEntry[] = rows.map((r) => {
             const hasTaskId = r.task_id !== undefined && r.task_id !== null && r.task_id !== '';
             const isSourceIdMatch = r.source_id !== undefined && r.source_id !== null && Number(r.source_id) === taskId;
             const memoStr = String(r.remark || r.source_name || r.memo || '');
@@ -584,7 +641,7 @@ export async function queryTaskBillingLogs(
       }
 
       const text = await res.text();
-      let body: any;
+      let body: { code?: number; msg?: string; data?: { rows?: RawScoreRow[]; total?: number } } | undefined;
       try {
         body = JSON.parse(text);
       } catch {
@@ -597,7 +654,7 @@ export async function queryTaskBillingLogs(
       }
 
       if (body && body.code === 1 && body.data && Array.isArray(body.data.rows)) {
-        const matchedLogs: ScoreLogEntry[] = body.data.rows.map((r: any) => {
+        const matchedLogs: ScoreLogEntry[] = body.data.rows.map((r) => {
           const hasTaskId = r.task_id !== undefined && r.task_id !== null && r.task_id !== '';
           const memoStr = String(r.type_text || r.model || r.project || '');
           const parsedTaskId = hasTaskId ? Number(r.task_id) : memoStr.includes(String(taskId)) ? taskId : undefined;
@@ -766,7 +823,7 @@ export async function queryTaskRuntimeDetails(
         );
         endpoints.getEditData.httpStatus = res.status;
         const text = await res.text();
-        let body: any;
+        let body: { code?: number; msg?: string; data?: Record<string, unknown> } | undefined;
         try {
           body = JSON.parse(text);
         } catch {
@@ -780,7 +837,10 @@ export async function queryTaskRuntimeDetails(
             endpoints.getEditData.data = body.data;
             result.rawEditData = body.data;
             if (body.data.extra) {
-              const parsedExtra = typeof body.data.extra === 'string' ? JSON.parse(body.data.extra) : body.data.extra;
+              const parsedExtra: Record<string, unknown> =
+                typeof body.data.extra === 'string'
+                  ? JSON.parse(body.data.extra)
+                  : (body.data.extra as Record<string, unknown>);
               result.extra = parsedExtra;
               result.extraSource = 'HTTP_API:getEditData';
             }
@@ -789,15 +849,15 @@ export async function queryTaskRuntimeDetails(
             endpoints.getEditData.error = body.msg || `code=${body.code}`;
           }
         }
-      } catch (reqErr: any) {
+      } catch (reqErr: unknown) {
         endpoints.getEditData.queryStatus = 'ERROR';
-        endpoints.getEditData.error = reqErr?.message || String(reqErr);
+        endpoints.getEditData.error = (reqErr as { message?: string } | undefined)?.message || String(reqErr);
       } finally {
         clearTimeout(timer);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       endpoints.getEditData.queryStatus = 'ERROR';
-      endpoints.getEditData.error = err?.message || String(err);
+      endpoints.getEditData.error = (err as { message?: string } | undefined)?.message || String(err);
     }
   }
 
@@ -830,7 +890,7 @@ export async function queryTaskRuntimeDetails(
       );
       endpoints.retrylog.httpStatus = res.status;
       const text = await res.text();
-      let body: any;
+      let body: { rows?: RawRetryLogRow[] } | undefined;
       try {
         body = JSON.parse(text);
       } catch {
@@ -868,15 +928,15 @@ export async function queryTaskRuntimeDetails(
           endpoints.retrylog.error = `HTTP ${res.status}`;
         }
       }
-    } catch (reqErr: any) {
+    } catch (reqErr: unknown) {
       endpoints.retrylog.queryStatus = 'ERROR';
-      endpoints.retrylog.error = reqErr?.message || String(reqErr);
+      endpoints.retrylog.error = (reqErr as { message?: string } | undefined)?.message || String(reqErr);
     } finally {
       clearTimeout(timer);
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     endpoints.retrylog.queryStatus = 'ERROR';
-    endpoints.retrylog.error = err?.message || String(err);
+    endpoints.retrylog.error = (err as { message?: string } | undefined)?.message || String(err);
   }
 
   // 3. 查询 /aivideo/exceptionaltaskdata/index?filter={"source_id":taskId}&op={"source_id":"="}
@@ -906,7 +966,7 @@ export async function queryTaskRuntimeDetails(
       );
       endpoints.exceptionaltask.httpStatus = res.status;
       const text = await res.text();
-      let body: any;
+      let body: { rows?: RawExceptionalTaskRow[] } | undefined;
       try {
         body = JSON.parse(text);
       } catch {
@@ -924,7 +984,8 @@ export async function queryTaskRuntimeDetails(
             if (!result.backendTaskId && row.id) {
               result.backendTaskId = Number(row.id);
             }
-            const rowExtra = typeof row.extra === 'string' ? JSON.parse(row.extra) : row.extra;
+            const rowExtra: Record<string, unknown> | undefined =
+              typeof row.extra === 'string' ? JSON.parse(row.extra) : (row.extra as Record<string, unknown> | undefined);
             if (rowExtra?.retry_provider) {
               result.retryProvider = String(rowExtra.retry_provider);
             }
@@ -951,15 +1012,15 @@ export async function queryTaskRuntimeDetails(
           endpoints.exceptionaltask.error = `HTTP ${res.status}`;
         }
       }
-    } catch (reqErr: any) {
+    } catch (reqErr: unknown) {
       endpoints.exceptionaltask.queryStatus = 'ERROR';
-      endpoints.exceptionaltask.error = reqErr?.message || String(reqErr);
+      endpoints.exceptionaltask.error = (reqErr as { message?: string } | undefined)?.message || String(reqErr);
     } finally {
       clearTimeout(timer);
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     endpoints.exceptionaltask.queryStatus = 'ERROR';
-    endpoints.exceptionaltask.error = err?.message || String(err);
+    endpoints.exceptionaltask.error = (err as { message?: string } | undefined)?.message || String(err);
   }
 
   return result;

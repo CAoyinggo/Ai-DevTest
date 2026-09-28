@@ -90,7 +90,7 @@ src/devtest/
 
 #### 第二类：可选注入适配器与库级能力 (Tier 2: Optional Injectable Adapters & Libraries)
 - **ResultSink & NdjsonResultSink** (`src/devtest/result-sink.ts`): 最小只写不读持久化导出端口及本地 NDJSON 单向追加导出器，深冻结记录，单向导出，绝不回写或干预核心状态。
-- **UI Evidence Producers** (`src/devtest/ui-adapters.ts`): `UIBrowserEvidenceProducer` 与 `UIVisualAiEvidenceProducer`，纯协议与信封抽象 (`DEFERRED_EXTERNAL_RUNTIME`，交付范围为 `NOT_IN_ZERO_DEPENDENCY_SCOPE`)，作为外部可选凭证收集器，绝不拥有裁决权，不自制 CDP 浏览器，不属于零依赖交付范围，禁止写为已接入。
+- **UI Evidence Producers** (`src/devtest/ui-adapters.ts`): `UIBrowserEvidenceProducer` 与 `UIVisualAiEvidenceProducer`，纯协议与信封抽象 (`DEFERRED_EXTERNAL_RUNTIME`，交付范围为 `NOT_IN_ZERO_DEPENDENCY_SCOPE`)，作为外部可选凭证收集器，绝不拥有裁决权，不自制 CDP 浏览器，不属于零依赖交付范围，禁止写为已接入。**外部运行时接缝**：`BrowserFactCollector` / `VisualAiFactCollector` 仅为类型化接缝（由外部工程实现真实 Playwright/视觉运行时并回传原始事实），本包只随附 `NullBrowserFactCollector` / `NullVisualAiFactCollector` 空缺省实现（返回空事实 ⇒ Producer 走 fail-closed，绝不臆造 PASS）；接缝本身不导入、不捆绑任何浏览器/视觉运行时。
 - **Agent Evaluation** (`src/devtest/agent-evaluation.ts`): 评测引擎纯库能力，缺真实样本时严格标记 `BLOCKED_DATA_MISSING`。
 
 #### 第三类：测试专用 Fixture / Adapter（仅限 tests/） (Tier 3: Test-Only Fixtures & Adapters)

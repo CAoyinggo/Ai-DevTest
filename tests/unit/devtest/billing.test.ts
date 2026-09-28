@@ -41,6 +41,15 @@ describe('Billing - 计费预估、流水对账与供应商成本核算', () => 
       expect(BillingOracle.calculateExpectedPoints({ mediaType: 'image', modelId: 205, resolution: '1k' })).toBe(10);
       expect(BillingOracle.calculateExpectedPoints({ mediaType: 'image', modelId: 205, resolution: '2k' })).toBe(15);
     });
+
+    it('图片模型 57 (Pan Image 2 低价版): 已登记刊例 1k=7/2k=12/4k=15，杜绝“目录缺登→兜底5→假超扣”FP-005', () => {
+      // 真实分流任务 4519 physical record: selmodelsId=57, 1K, 实际净扣 7；
+      // 未登记前工具兜底 image=5 → 误报“超扣2 / 资损告警 FP-005”。
+      // 刊例值取自 pq_absetting model_config_id=57（1K/2K/4K list_price_points=7/12/15）。
+      expect(BillingOracle.calculateExpectedPoints({ mediaType: 'image', modelId: 57, resolution: '1K' })).toBe(7);
+      expect(BillingOracle.calculateExpectedPoints({ mediaType: 'image', modelId: 57, resolution: '2k' })).toBe(12);
+      expect(BillingOracle.calculateExpectedPoints({ mediaType: 'image', modelId: 57, resolution: '4k' })).toBe(15);
+    });
   });
 
   describe('2. 专属任务流水对账与三大不变量 (reconcileTaskLedger)', () => {

@@ -159,4 +159,68 @@ describe('MediaInspector - 真实媒体物理校验器', () => {
       expect(result.reasons.some((r) => r.includes('缺少 moov 元数据块'))).toBe(true);
     });
   });
+
+  describe('WebP 深度解析与防假 PASS 回归 (RIFF/WEBP 容器)', () => {
+    const makeWebpHeader = (chunk: string, size = 30): Buffer => {
+      const b = Buffer.alloc(size);
+      b.write('RIFF', 0, 'ascii');
+      b.writeUInt32LE(size - 8, 4);
+      b.write('WEBP', 8, 'ascii');
+      b.write(chunk, 12, 'ascii');
+      return b;
+    };
+    const makeVP8X = (w: number, h: number): Buffer => {
+      const b = makeWebpHeader('VP8X');
+      b.writeUInt32LE(10, 16);
+      b.writeUInt16LE((w - 1) & 0xffff, 24);
+      b.writeUInt8(((w - 1) >> 16) & 0xff, 26);
+      b.writeUInt16LE((h - 1) & 0xffff, 27);
+      b.writeUInt8(((h - 1) >> 16) & 0xff, 29);
+      return b;
+    };
+    const makeVP8Lossy = (w: number, h: number, withStartCode = true): Buffer => {
+      const b = makeWebpHeader('VP8 ');
+      b.writeUInt32LE(10, 16);
+      if (withStartCode) {
+        b.writeUInt8(0x9d, 23);
+        b.writeUInt8(0x01, 24);
+        b.writeUInt8(0x2a, 25);
+      }
+      b.writeUInt16LE(w & 0x3fff, 26);
+      b.writeUInt16LE(h & 0x3fff, 28);
+      return b;
+    };
+
+    it('W-A: 合法 VP8X 扩展帧 → 解析真实尺寸且 decodable', () => {
+      const result = inspectImageBuffer(makeVP8X(1280, 720));
+      expect(result.decodable).toBe(true);
+      expect(result.format).toBe('webp');
+      expect(result.dimensions).toEqual({ width: 1280, height: 720 });
+      expect(result.qualityClassification).toBe('TASK_SUCCESS_AND_VALID');
+    });
+    it('W-B: 合法 VP8 简单有损（含关键帧 start code）→ 解析真实尺寸且 decodable', () => {
+      const result = inspectImageBuffer(makeVP8Lossy(1024, 1024));
+      expect(result.decodable).toBe(true);
+      expect(result.dimensions).toEqual({ width: 1024, height: 1024 });
+    });
+
+    it('W-C: RIFF/WEBP 容器头 + 未知 chunk（旧实现臆造 1024×1024 假 PASS）→ 必须 FILE_INVALID', () => {
+      const result = inspectImageBuffer(makeWebpHeader('XXXX'));
+      expect(result.decodable).toBe(false);
+      expect(result.qualityClassification).toBe('FILE_INVALID');
+      expect(result.dimensions).toBeUndefined();
+    });
+
+    it('W-D: VP8 简单有损但缺失关键帧 start code（截断/损坏）→ 必须 FILE_INVALID，绝不假 PASS', () => {
+      const result = inspectImageBuffer(makeVP8Lossy(800, 600, false));
+      expect(result.decodable).toBe(false);
+      expect(result.qualityClassification).toBe('FILE_INVALID');
+    });
+
+    it('W-E: 仅 16 字节 RIFF/WEBP 头、无 chunk payload → 必须 FILE_INVALID', () => {
+      const result = inspectImageBuffer(makeWebpHeader('VP8X', 16));
+      expect(result.decodable).toBe(false);
+      expect(result.qualityClassification).toBe('FILE_INVALID');
+    });
+  });
 });

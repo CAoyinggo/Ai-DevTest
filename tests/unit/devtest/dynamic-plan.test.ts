@@ -411,9 +411,14 @@ describe('DevTest 动态计划生成与事实探知 (Dynamic Plan & Fact Discove
         expectedPoints: 70,
         baseline: planRes.testPlan?.baseline,
         scoreLogs: [{ task_id: 84001, type: 2, score: -70, memo: '预扣' }],
+        // 分流变更的"干净通过"必须以完整证据成立：确认 extra.diversion 与网关渠道，
+        // 使 regressionStatus=CLEAN。缺失时回归比对为 UNKNOWN，按 fail-closed 应为 UNVERIFIED 而非静默 PASS。
+        dbExtraConfirmed: true,
+        gatewayChannelConfirmed: true,
       });
       expect(verifyClean.passed).toBe(true);
       expect(verifyClean.expectedVsActual?.regressionDiff?.isRegression).toBe(false);
+      expect(verifyClean.expectedVsActual?.regressionDiff?.regressionStatus).toBe('CLEAN');
     });
 
     it('回归阻断 1：变更后积分发生非预期漂移，准确报警并阻断 PASS', async () => {

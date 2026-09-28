@@ -793,5 +793,61 @@ describe('Canonical TestSpec & Evidence Envelope 协议契约测试 (Phase 1.1)'
       expect(evalResult.matchedEnvelopes['SERVER_API:ROUTING_CHANNEL']).toBe(unverifiedEnv);
       expect(evalResult.details.find((d) => d.key === 'SERVER_API:ROUTING_CHANNEL')?.matched).toBe(false);
     });
+
+    it('6. 同一 evidenceKey 多信封 PASS+UNVERIFIED 混合 → 不满足(要求 every===PASS)，绝不因存在一条 PASS 就放行', () => {
+      // 纵深回归锁：canonical-protocol.ts ~773『successfulEnvs.every(e => observationStatus==='PASS')』
+      // 才算 matched；混入任一 UNVERIFIED 即落 :790 else 分支「未能全部确证为 PASS」。
+      // 钉死"every"语义——防未来被改成"some(===PASS)"而让一条 PASS 淹没未决证据制造假绿。
+      const taskPass: CanonicalEvidenceEnvelope = {
+        evidenceId: 'ev-task-ok',
+        testId: 'test-eval-001',
+        sourceTool: 'fetcher',
+        sourceType: 'SERVER_API',
+        evidenceKey: 'SERVER_API:TASK_STATUS',
+        observationStatus: 'PASS',
+        capturedAt: '2026-09-21T10:00:00.000Z',
+        environment: 'test',
+        subjectType: 'task',
+        subjectId: 100,
+        normalizedFields: {},
+        provenance: 'SERVER_API (/status)',
+        confidence: 1.0,
+        immutable: true,
+        redacted: true,
+        collectionStatus: 'SUCCESS',
+      };
+      const chPass: CanonicalEvidenceEnvelope = {
+        evidenceId: 'ev-ch-pass',
+        testId: 'test-eval-001',
+        sourceTool: 'runtime',
+        sourceType: 'SERVER_API',
+        evidenceKey: 'SERVER_API:ROUTING_CHANNEL',
+        observationStatus: 'PASS',
+        capturedAt: '2026-09-21T10:00:00.000Z',
+        environment: 'test',
+        subjectType: 'gateway_channel',
+        subjectId: 'ch-a',
+        normalizedFields: {},
+        provenance: 'SERVER_RUN_FACT',
+        confidence: 1.0,
+        immutable: true,
+        redacted: true,
+        collectionStatus: 'SUCCESS',
+      };
+      const chUnverified: CanonicalEvidenceEnvelope = {
+        ...chPass,
+        evidenceId: 'ev-ch-unv',
+        observationStatus: 'UNVERIFIED',
+        subjectId: 'ch-b',
+        confidence: 0.5,
+      };
+
+      const evalResult = evaluateRequiredEvidence(validSpec, [taskPass, chPass, chUnverified]);
+      expect(evalResult.satisfied).toBe(false); // 一条 PASS 不能盖过同 key 的 UNVERIFIED
+      expect(evalResult.unverifiedEvidenceKeys).toContain('SERVER_API:ROUTING_CHANNEL');
+      const chDetail = evalResult.details.find((d) => d.key === 'SERVER_API:ROUTING_CHANNEL');
+      expect(chDetail?.matched).toBe(false);
+      expect(chDetail?.reason).toContain('未能全部确证为 PASS');
+    });
   });
 });

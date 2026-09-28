@@ -91,7 +91,15 @@ export function resolveCatalogModelPrice(params: {
         : 'FIXED';
   if (entry.resolutions && Object.keys(entry.resolutions).length > 0) {
     const keys = Object.keys(entry.resolutions);
-    const rk = normalizeResolutionKey(params.resolution, keys) || (keys.includes('720p') ? '720p' : keys[0]);
+    const matched = normalizeResolutionKey(params.resolution, keys);
+    if (matched === undefined && params.resolution !== undefined) {
+      // 指定了分辨率却未命中任何目录档位：绝不用相邻档(720p/首档)价格顶替——那既违背本模块"未命中→undefined,
+      // 绝不臆造价格"契约，又会把该分辨率的真实计费误算成他档(→假 PASS 或假 FAIL)。fail-closed 返回 undefined，
+      // 交调用方按"刊例定价未确定"处理(discoverModelContract 落 allowPass=false → verdict billing 行 BLOCKED)。
+      return undefined;
+    }
+    // 未指定分辨率(params.resolution===undefined)时沿用既有默认档(720p/首档)，默认行为字节级不变。
+    const rk = matched || (keys.includes('720p') ? '720p' : keys[0]);
     const value = entry.resolutions[rk];
     if (typeof value !== 'number') return undefined;
     return { value, billingType, catalogKey, resolutionKey: rk, status: cat.status };

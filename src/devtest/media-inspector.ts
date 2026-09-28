@@ -439,30 +439,57 @@ export function inspectImageBuffer(buffer: Buffer): MediaInspectionResult {
     buffer.slice(8, 12).toString('ascii') === 'WEBP'
   ) {
     const chunkHeader = buffer.slice(12, 16).toString('ascii');
-    let width = 1024;
-    let height = 1024;
+    // Fail-closed：宽高初始 0，只有从 VP8X / VP8L / VP8(简单有损) 关键帧「实际解析」出的正尺寸才置真。
+    // 旧实现初始化为 1024×1024 兜底 → 任何 RIFF/WEBP 容器头 + 非 VP8X/VP8L chunk（含最常见的 'VP8 ' 简单有损、
+    // 空/截断/垃圾 payload）都会 validDims=true 假判 decodable 且伪造 1024×1024 尺寸——这是媒体物理层假绿根因。
+    let width = 0;
+    let height = 0;
 
     if (chunkHeader === 'VP8X' && buffer.length >= 30) {
-      // VP8X 扩展帧
+      // VP8X 扩展帧：24-bit(LE) canvas 宽/高，存储值为「实际值-1」
       width = 1 + (buffer.readUInt16LE(24) | (buffer.readUInt8(26) << 16));
       height = 1 + (buffer.readUInt16LE(27) | (buffer.readUInt8(29) << 16));
-    } else if (chunkHeader === 'VP8L' && buffer.length >= 25) {
-      // VP8L 无损
+    } else if (chunkHeader === 'VP8L' && buffer.length >= 25 && buffer.readUInt8(20) === 0x2f) {
+      // VP8L 无损：signature 0x2f 后 14-bit 宽、14-bit 高（存储值-1）
       const b1 = buffer.readUInt8(21);
       const b2 = buffer.readUInt8(22);
       const b3 = buffer.readUInt8(23);
       const b4 = buffer.readUInt8(24);
       width = 1 + (((b2 & 0x3f) << 8) | b1);
       height = 1 + (((b4 & 0x0f) << 10) | (b3 << 2) | ((b2 & 0xc0) >> 6));
+    } else if (
+      chunkHeader === 'VP8 ' &&
+      buffer.length >= 30 &&
+      buffer[23] === 0x9d &&
+      buffer[24] === 0x01 &&
+      buffer[25] === 0x2a
+    ) {
+      // VP8 简单有损：关键帧 start code 0x9d 0x01 0x2a 之后为 14-bit 宽/高
+      width = buffer.readUInt16LE(26) & 0x3fff;
+      height = buffer.readUInt16LE(28) & 0x3fff;
     }
 
     const validDims = width > 0 && height > 0;
+    if (!validDims) {
+      return {
+        fileAccessible,
+        containerIdentified: true,
+        metadataMatched: false,
+        actualDecoded: null,
+        decodable: false,
+        format: 'webp',
+        reasons: [
+          `WebP 容器头有效但未能从 VP8X/VP8L/VP8 关键帧解析出有效尺寸 (chunk=${chunkHeader})，物理结构未验真 [FILE_INVALID]`,
+        ],
+        qualityClassification: 'FILE_INVALID',
+      };
+    }
     return {
       fileAccessible,
       containerIdentified: true,
-      metadataMatched: validDims,
+      metadataMatched: true,
       actualDecoded: null,
-      decodable: validDims,
+      decodable: true,
       format: 'webp',
       dimensions: { width, height },
       reasons: [],

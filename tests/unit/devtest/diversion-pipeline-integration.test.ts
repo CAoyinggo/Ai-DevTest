@@ -147,6 +147,44 @@ describe('DiversionEligibilityProducer (预测 vs 落库分流标记)', () => {
     const producer = new DiversionEligibilityProducer(undefined, undefined);
     expect(producer.produce({}, ctx)).toHaveLength(0);
   });
+
+  it('对抗：mediaType=video 但只供 image 子输入 → NO_INPUT，纵使落库「未分流」也绝不伪造 PASS（守住假绿）', () => {
+    // 声明 video、却只给 image 子输入：两条真实预测分支都不命中 → 兜底 NO_INPUT(diverted:false)。
+    // 落库为「未分流」(diversion=0 → observedDiverted=false, hasObserved=true)。
+    // 修复前：NO_INPUT 的 diverted:false === observedDiverted:false → matched=true → observationStatus=PASS（假绿！）。
+    // 修复后：decision===NO_INPUT 即无可评估预测 → 强制 UNVERIFIED，不因巧合撞库放行。
+    const mismatched: DiversionEligibilityInput = {
+      mediaType: 'video',
+      image: {
+        selmodelsId: 1201,
+        isGlobalModel: true,
+        alias: 'gemini-3-pro-image',
+        hasGlobalApiKey: true,
+        serviceline: 'r',
+        resolution: '2k',
+        aspect: '1:1',
+        routeRules: { image: { '1201': { channels: [{ resolutions: ['2K'], aspect_ratios: ['1:1'] }] } } },
+      },
+    };
+    const e = new DiversionEligibilityProducer(mismatched, dbWith({ diversion: 0 })).produce({}, ctx)[0];
+    expect(e.normalizedFields.predictedDecision).toBe('NO_INPUT');
+    expect(e.observationStatus).toBe('UNVERIFIED');
+    expect(e.normalizedFields.matched).toBeUndefined();
+    expect(e.confidence).toBe(0);
+  });
+
+  it('对抗：mediaType=image 但只供 video 子输入 → 不得错评为 video 分流，收敛为 NO_INPUT→UNVERIFIED', () => {
+    // 修复前 video 分支仅凭 `input.video` 命中、无视 mediaType → 会把 video 分流套在 image 声明上（错评）。
+    // 修复后分支强制 `mediaType==='video' && input.video`，跨媒体错配一律 NO_INPUT。
+    const crossWired: DiversionEligibilityInput = {
+      mediaType: 'image',
+      video: predictDivert.video,
+    };
+    const e = new DiversionEligibilityProducer(crossWired, dbWith({ diversion: 0 })).produce({}, ctx)[0];
+    expect(e.normalizedFields.predictedDecision).toBe('NO_INPUT');
+    expect(e.observationStatus).toBe('UNVERIFIED');
+    expect(e.normalizedFields.matched).toBeUndefined();
+  });
 });
 
 describe('verify() 集成：diversionEligibility 自动挂载 producer', () => {
@@ -201,6 +239,7 @@ describe('autoDiversionEligibility 一键化（读 line=10 配置自动构造断
         mediaType: 'video',
         autoDiversionEligibility: {
           config: cfg,
+          eligible: true, // 视频请求级硬性资格须显式提供（不再臆造 true）：模型78@720p/16:9 为真实合规请求
           resolution: '720p',
           aspect: '16:9',
           routeGroup: { newapi_group: 'default', usable: true },
@@ -212,6 +251,25 @@ describe('autoDiversionEligibility 一键化（读 line=10 配置自动构造断
     expect(input?.video?.isGlobalModel).toBe(false); // 78 非全量
     expect(input?.video?.alias).toBe('seedance-2.5');
     expect(input?.video?.routeRules).toBe(cfg.routeRules);
+  });
+
+  it('buildAutoDiversionEligibility(video)：给 config 但未显式传 eligible → 返回 undefined（拒绝臆造硬性资格 isVideoRequestEligible，不挂载假绿断言）', async () => {
+    const input = await buildAutoDiversionEligibility(
+      {
+        taskId: 1,
+        modelId: 78,
+        mediaType: 'video',
+        autoDiversionEligibility: {
+          config: cfg,
+          resolution: '720p',
+          aspect: '16:9',
+          routeGroup: { newapi_group: 'default', usable: true },
+          // eligible 故意省略：视频请求级硬性资格无法从库配置/入参推导 → fail-closed 不构造断言，绝不臆造 true 造成假绿
+        },
+      },
+      78,
+    );
+    expect(input).toBeUndefined();
   });
 
   it('未给 config 且处于 VITEST → 跳过真实读库，返回 undefined（不触网）', async () => {
@@ -232,6 +290,7 @@ describe('autoDiversionEligibility 一键化（读 line=10 配置自动构造断
       dbRawCollection: dbWith({ diversion: 10 }, 10),
       autoDiversionEligibility: {
         config: cfg,
+        eligible: true, // 视频请求级硬性资格须显式提供（不再臆造 true）：模型78@720p/16:9 为真实合规请求
         resolution: '720p',
         aspect: '16:9',
         routeGroup: { newapi_group: 'default', usable: true },

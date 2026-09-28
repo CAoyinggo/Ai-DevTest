@@ -20,6 +20,7 @@ export type {
 } from './core-kernel.js';
 
 import type { Experience } from './domain-knowledge.js';
+import type { GatewayChannelConfig } from './routing.js';
 
 export type {
   KnowledgeCredibility,
@@ -450,7 +451,7 @@ export interface TrustedGatewaySnapshot {
   sourceEndpoint: string;
   collectionStatus: 'SUCCESS' | 'FAILED' | 'EXPIRED' | 'UNKNOWN';
   provenance: 'API_READONLY_COLLECTOR' | 'USER_ASSERTION' | 'FIXTURE';
-  channels: any[];
+  channels: GatewayChannelConfig[];
   collectorVersion?: string;
   ttlMs?: number;
 }
