@@ -382,7 +382,7 @@ export interface ExpectedVsActual {
 }
 
 export const DEFAULT_GITHUB_KNOWLEDGE_CONFIG = {
-  repository: 'CAoyinggo/panqu-Test-agent',
+  repository: 'CAoyinggo/Ai-DevTest',
   path: '.agents/skills/self-evolving-tester/references/knowledge_candidates.json',
 } as const;
 

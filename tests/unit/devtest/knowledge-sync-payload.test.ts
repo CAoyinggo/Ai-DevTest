@@ -45,7 +45,7 @@ describe('DevTest Knowledge → GitHub 受控回写与 Sync Payload 规范测试
 
   describe('1. 集中默认配置规范', () => {
     it('定义了统一的 GitHub 仓库与文件路径常量，杜绝多处硬编码', () => {
-      expect(DEFAULT_GITHUB_KNOWLEDGE_CONFIG.repository).toBe('CAoyinggo/panqu-Test-agent');
+      expect(DEFAULT_GITHUB_KNOWLEDGE_CONFIG.repository).toBe('CAoyinggo/Ai-DevTest');
       expect(DEFAULT_GITHUB_KNOWLEDGE_CONFIG.path).toBe(
         '.agents/skills/self-evolving-tester/references/knowledge_candidates.json',
       );

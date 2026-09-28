@@ -1,4 +1,4 @@
-# Panqu AI DevTest — 验真规约与金融对账白皮书 (Verification & Financial Spec)
+# Ai-DevTest — 验真规约与金融对账白皮书 (Verification & Financial Spec)
 
 DevTest 坚持**事实第一、客观独立、Fail-Closed**原则。本规约详细界定物理媒体验真深度、三大金融安全不变量以及会话鉴权体系。
 

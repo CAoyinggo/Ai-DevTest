@@ -214,7 +214,7 @@ export const DEVTEST_RECORD_CANDIDATE_TOOL = {
       },
       repository: {
         type: 'string',
-        description: '来源代码仓库（例如 CAoyinggo/panqu-Test-agent）',
+        description: '来源代码仓库（例如 CAoyinggo/Ai-DevTest）',
       },
       shared_memory_dir: {
         type: 'string',

@@ -549,7 +549,7 @@ describe('DevTest 本地 CLI 运行入口 (devtest-cli)', () => {
 
     expect(code).toBe(0);
     const combined = logs.join('\n');
-    expect(combined).toContain('Panqu AI DevTest');
+    expect(combined).toContain('Ai-DevTest');
     expect(combined).toContain('probe');
     expect(combined).toContain('plan');
     expect(combined).toContain('execute');

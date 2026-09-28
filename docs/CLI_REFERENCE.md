@@ -1,4 +1,4 @@
-# Panqu AI DevTest — 命令行工具参考手册 (CLI Reference)
+# Ai-DevTest — 命令行工具参考手册 (CLI Reference)
 
 本地终端命令行工具 `devtest` (`bin/devtest-cli.ts`) 与 IDE 辅助 MCP 服务共享底层纯 TypeScript 内核，保证 CLI 命令行与 IDE 智能体调用具有 100% 相同的数据流和判定逻辑。
 

@@ -79,12 +79,12 @@ describe('DevTest MCP 受控 Knowledge Candidate 记录入口测试', () => {
     it('合法结构化 Candidate 成功写入 inbox.md 且初始状态严格为待审 [ ]', async () => {
       const res = await service.recordCandidate({
         topic: '[FP-005] 业务风险模式: 任务失败未退款资损缺陷 (模型 #88)',
-        content: '根据 CAoyinggo/panqu-Test-agent 源码 src/devtest/billing.ts，任务失败时必须退款',
+        content: '根据 CAoyinggo/Ai-DevTest 源码 src/devtest/billing.ts，任务失败时必须退款',
         agent: 'trae',
         pattern_id: 'FP-005',
         model_id: 88,
         source: 'github',
-        repository: 'CAoyinggo/panqu-Test-agent',
+        repository: 'CAoyinggo/Ai-DevTest',
         shared_memory_dir: fakeSharedMemoryDir,
       });
 
@@ -99,7 +99,7 @@ describe('DevTest MCP 受控 Knowledge Candidate 记录入口测试', () => {
       expect(inboxContent).toContain(res.candidateId);
       expect(inboxContent).toContain('- [ ] **[' + res.candidateId + ']**');
       expect(inboxContent).not.toContain('- [x]'); // 严禁自动成为已确认
-      expect(inboxContent).toContain('来源: `trae` (repo: CAoyinggo/panqu-Test-agent)');
+      expect(inboxContent).toContain('来源: `trae` (repo: CAoyinggo/Ai-DevTest)');
       expect(inboxContent).toContain('[FP-005] 业务风险模式: 任务失败未退款资损缺陷 (模型 #88)');
     });
   });
@@ -178,7 +178,7 @@ describe('DevTest MCP 受控 Knowledge Candidate 记录入口测试', () => {
       // 步骤 1: 记录候选
       const recordRes = await service.recordCandidate({
         topic: '[FP-005] 业务风险模式: 任务失败未退款资损缺陷 (模型 #88)',
-        content: 'CAoyinggo/panqu-Test-agent 源码 src/devtest/billing.ts: 异常状态下必须退款',
+        content: 'CAoyinggo/Ai-DevTest 源码 src/devtest/billing.ts: 异常状态下必须退款',
         pattern_id: 'FP-005',
         model_id: 88,
         shared_memory_dir: fakeSharedMemoryDir,

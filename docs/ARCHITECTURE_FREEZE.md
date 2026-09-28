@@ -1,6 +1,6 @@
-# Panqu AI DevTest — 核心语义冻结与受控扩展架构规范 (ARCHITECTURE FREEZE)
+# Ai-DevTest — 核心语义冻结与受控扩展架构规范 (ARCHITECTURE FREEZE)
 
-你正在维护 Panqu AI DevTest。
+你正在维护 Ai-DevTest。
 
 从本规范生效开始，**核心领域语义与唯一最终裁决权永久冻结，架构演进严格遵循受控扩展原则**。
 
@@ -12,7 +12,7 @@
 
 ## 1.1 当前已实现收敛架构拓扑 (Implemented Converged Topology)
 
-经过架构收敛，Panqu AI DevTest 的四大核心动作已全面收敛至统一的 `RequirementTrace → TestSpec → Adapter → Evidence → Verdict` 目标拓扑。`probe()`、`plan()`、`execute()`、`verify()` 均已完成单向标准规约或证据信封打通。
+经过架构收敛，Ai-DevTest 的四大核心动作已全面收敛至统一的 `RequirementTrace → TestSpec → Adapter → Evidence → Verdict` 目标拓扑。`probe()`、`plan()`、`execute()`、`verify()` 均已完成单向标准规约或证据信封打通。
 
 ```text
 Requirement / Code Change

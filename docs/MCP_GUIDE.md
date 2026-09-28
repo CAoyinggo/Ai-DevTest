@@ -1,4 +1,4 @@
-# Panqu AI DevTest — MCP 集成指南 (Model Context Protocol)
+# Ai-DevTest — MCP 集成指南 (Model Context Protocol)
 
 DevTest 原生提供符合 Model Context Protocol (2024-11-05) 标准的 stdio 通讯服务，专为 Trae、Cursor 等 IDE 辅助智能体打造，帮助智能体形成确定性的测试动作心智模型。
 
@@ -87,7 +87,7 @@ DevTest MCP 严格只对外暴露以 `devtest` 为核心的测试副驾工具，
       "args": [
         "/path/to/engine-snapshot/dist/bin/devtest-mcp.js",
         "--project-root",
-        "/path/to/panqu-Test-agent"
+        "/path/to/Ai-DevTest"
       ],
       "env": {
         "NODE_OPTIONS": "",

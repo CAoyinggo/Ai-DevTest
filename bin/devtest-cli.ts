@@ -61,7 +61,7 @@ const c = {
 };
 
 const HELP_TEXT = `
-${c.bold}${c.cyan}Panqu AI DevTest 开发者测试工具${c.reset} ${c.dim}v${DEVTEST_VERSION}${c.reset}
+${c.bold}${c.cyan}Ai-DevTest 开发者测试工具${c.reset} ${c.dim}v${DEVTEST_VERSION}${c.reset}
 轻量 · 纯净 · 双模同源（本地 CLI + TRAE MCP）
 
 ${c.bold}用法:${c.reset}
