@@ -107,6 +107,7 @@ def main():
                                               "pq_aivideo_scene", "pq_aivideo_fusion"))
                         for tbl in image_tables:
                             try:
+                                # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- tbl 仅来自 --image-source 的 choices 白名单或硬编码四源表元组（非自由输入）；数据值 tid 走 %s 参数化
                                 cur.execute("SELECT * FROM {} WHERE id = %s LIMIT 1;".format(tbl), (tid,))
                             except Exception:
                                 continue
@@ -150,8 +151,10 @@ def main():
                                      "createtime, updatetime, finishtime")
                         try:
                             if newapi_log_id is not None:
+                                # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- SAFE_COLS 为上方硬编码列名字面量（非用户输入）；数据值 newapi_log_id 走 %s 参数化
                                 cur.execute("SELECT {} FROM pq_newapi_task_log WHERE id = %s LIMIT 1;".format(SAFE_COLS), (newapi_log_id,))
                             else:
+                                # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- SAFE_COLS 为上方硬编码列名字面量（非用户输入）；数据值 backend_pk 走 %s 参数化
                                 cur.execute("SELECT {} FROM pq_newapi_task_log WHERE ai_task_id = %s ORDER BY id DESC LIMIT 1;".format(SAFE_COLS), (backend_pk,))
                             n_rec = cur.fetchone()
                             if n_rec:

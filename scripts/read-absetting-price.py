@@ -9,6 +9,7 @@ STRICTLY READ-ONLY。AB 库名可 --ab-db 指定，否则读 cred.ab_database，
 Usage:  python3 scripts/read-absetting-price.py --model 12 [--ab-db ai_video_ab_test] --json
 """
 import os
+import re
 import sys
 import json
 import argparse
@@ -42,7 +43,12 @@ def detect_ab_schema(cur, explicit):
         if s in seen:
             continue
         seen.add(s)
+        # 防御性硬化：schema 名来自 information_schema 枚举（非用户输入），仍强制 [A-Za-z0-9_] 标识符白名单，
+        # 拒绝任何异常名后再反引号插值（标识符无法用 %s 绑定；此处只读 LIMIT 0 探表、无值插值）。
+        if not re.match(r"^[A-Za-z0-9_]+$", s):
+            continue
         try:
+            # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- schema 名经上方标识符白名单校验，非用户输入，无数据值插值
             cur.execute(f"SELECT resolution FROM `{s}`.pq_absetting LIMIT 0;")
             return s
         except Exception:

@@ -107,6 +107,7 @@ def run_diagnostics(conn):
         print(f"✅ 找到 {len(tables)} 张 pq_ 前缀核心业务表")
         for table_name in ["pq_score_log", "pq_aivideo_new", "pq_volcengine_ai_task", "pq_aivideo_diversion_config"]:
             try:
+                # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- table_name 仅取自上方硬编码字面量白名单（非用户输入），无数据值插值
                 cursor.execute(f"SELECT COUNT(*) FROM `{table_name}`;")
                 print(f"   - [{table_name}] 记录总数: {cursor.fetchone()[0]}")
             except Exception as table_err:
