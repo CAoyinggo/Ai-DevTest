@@ -1,11 +1,11 @@
 <div align="center">
 
-# 🛡️ Panqu AI DevTest
+# 🛡️ Ai-DevTest
 
-**面向 Panqu AI 图片 / 视频生成链路的测试工程副驾 —— 意图编排、物理证据验真、零假 PASS 确定性验收门禁**
+**面向 AI 图片 / 视频生成链路的测试工程副驾 —— 意图编排、物理证据验真、零假 PASS 确定性验收门禁**
 
 [![Version](https://img.shields.io/badge/version-6.0.0-blue.svg)](package.json)
-[![Tests](https://img.shields.io/badge/tests-51%20suites%20%7C%20906%20passed%20(100%25)-brightgreen.svg)](tests/unit/devtest)
+[![Tests](https://img.shields.io/badge/tests-52%20suites%20%7C%20914%20passed%20(100%25)-brightgreen.svg)](tests/unit/devtest)
 [![Coverage](https://img.shields.io/badge/coverage-87.51%25%20(Lines)%20%7C%2086.51%25%20(Stmts)-brightgreen.svg)](vitest.config.ts)
 [![Security Gates](https://img.shields.io/badge/security-5%20automated%20gates-success.svg)](.github/workflows/ci.yml)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-orange.svg)](package.json)
@@ -19,7 +19,7 @@
 
 ## 📖 定位：只测不跑 · 零假 PASS
 
-Panqu AI DevTest 是轻量、纯净、无副作用的测试工程副驾。它负责**测试意图编排、多维物理证据链验真与全链路验收闭环**，**不承载模型训练与推理服务本身**。
+Ai-DevTest 是轻量、纯净、无副作用的测试工程副驾。它负责**测试意图编排、多维物理证据链验真与全链路验收闭环**，**不承载模型训练与推理服务本身**。
 
 > **核心业务原则：代码/需求变更 ➔ 意图编排 ➔ 物理证据与真实对账 ➔ 确定性门禁裁决（零副作用 · 零假 PASS）**
 
